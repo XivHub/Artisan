@@ -258,7 +258,7 @@ namespace Artisan.UI
                                     CraftingListUI.Draw();
                                     break;
                                 case OpenWindow.About:
-                                    AboutTab.Draw("Artisan");
+                                    AboutTab.Draw("Artisan (Zhyra fork)");
                                     break;
                                 case OpenWindow.Debug:
                                     DebugTab.Draw();

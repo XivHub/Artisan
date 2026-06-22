@@ -505,6 +505,76 @@ namespace Artisan.IPC
             }
         }
 
+        // Fork addition: pull the list's RESULT items (finished crafted components)
+        // from retainers into inventory, up to each list item's target quantity.
+        // The stock RestockFromRetainers(list) only fetches ingredients
+        // (ListMaterials); for FC-workshop / submarine lists the components ARE the
+        // list items and must be in inventory to submit, so this fetches those.
+        // Ignores OnlyRestockNonCrafted (the items we want are crafted). One bell
+        // session, mirroring RestockFromRetainers(NewCraftingList).
+        public static void RestockListItemsFromRetainers(NewCraftingList list)
+        {
+            Dictionary<int, int> requiredItems = new();
+
+            foreach (var entry in list.Recipes)
+            {
+                if (!LuminaSheets.RecipeSheet.TryGetValue(entry.ID, out var recipe))
+                    continue;
+                uint resultId = recipe.ItemResult.RowId;
+                if (resultId == 0)
+                    continue;
+                int target = entry.Quantity * recipe.AmountResult;
+                int invCount = CraftingListUI.NumberOfIngredient(resultId);
+                int diff = target - invCount;
+                if (diff > 0)
+                    requiredItems[(int)resultId] = requiredItems.TryGetValue((int)resultId, out var ex) ? ex + diff : diff;
+
+                // Refresh retainer cache if empty
+                GetRetainerItemCount(resultId);
+            }
+
+            if (RetainerData.SelectMany(x => x.Value).Any(x => requiredItems.Any(y => y.Key == x.Value.ItemId)))
+            {
+                Svc.Log.Debug($"Processing Retainer Data (components)");
+                TM.Enqueue(() => Svc.Framework.Update += Tick);
+                TM.Enqueue(() => AutoRetainerIPC.Suppress());
+                TM.EnqueueBell();
+                TM.DelayNext("BellInteracted", 1000);
+                TM.Enqueue(() => Svc.Condition[ConditionFlag.OccupiedSummoningBell]);
+
+                foreach (var retainer in RetainerData)
+                {
+                    if (retainer.Value.Values.Any(x => requiredItems.Any(y => y.Value > 0 && y.Key == x.ItemId && x.Quantity > 0)))
+                    {
+                        TM.Enqueue(() => RetainerListHandlers.SelectRetainerByID(retainer.Key));
+                        TM.DelayNext("WaitToSelectEntrust", 200);
+                        TM.Enqueue(() => RetainerHandlers.SelectEntrustItems());
+                        TM.DelayNext("EntrustSelected", 200);
+                        foreach (var item in requiredItems)
+                        {
+                            if (retainer.Value.Values.Any(x => x.ItemId == item.Key && x.Quantity > 0))
+                            {
+                                TM.DelayNext("SwitchItems", 200);
+                                TM.Enqueue(() =>
+                                {
+                                    ExtractItem(requiredItems, item, retainer.Key);
+                                });
+                            }
+                        }
+                        TM.DelayNext("CloseRetainer", 200);
+                        TM.Enqueue(() => RetainerHandlers.CloseAgentRetainer());
+                        TM.DelayNext("ClickQuit", 200);
+                        TM.Enqueue(() => RetainerHandlers.SelectQuit());
+                    }
+                }
+                TM.DelayNext("CloseRetainerList", 200);
+                TM.Enqueue(() => RetainerListHandlers.CloseRetainerList());
+                TM.Enqueue(() => YesAlready.Unlock());
+                TM.Enqueue(() => AutoRetainerIPC.Unsuppress());
+                TM.Enqueue(() => Svc.Framework.Update -= Tick);
+            }
+        }
+
         private static unsafe void Tick(IFramework framework)
         {
             if (Svc.Condition[ConditionFlag.OccupiedSummoningBell])

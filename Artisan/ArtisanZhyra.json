@@ -1,0 +1,16 @@
+{
+  "Author": "Taurenkey (Puni.sh)",
+  "Name": "Artisan (Zhyra fork)",
+  "Punchline": "A 'simple' crafting plugin.",
+  "Description": "The all-in-one crafting plugin.",
+  "InternalName": "ArtisanZhyra",
+  "ApplicableVersion": "any",
+  "IconUrl": "https://s3.puni.sh/media/plugin/6/icon-3h8wd5b9qr.png",
+  "Tags": [
+    "crafting"
+  ],
+  "RepoUrl": "https://github.com/ZhyraPlugins/Artisan",
+  "DalamudApiLevel": 15,
+  "DownloadLinkTesting": "https://edgl.dev/share/zhyra/artisan/latest.zip",
+  "ChangeLog": "- Sync with upstream (expert solver profiles for sims).\n- Fix issue with graphical simulator not updating Raphael solutions correctly.\n- Try and prevent adjusting Raphael macros to skip Excellent GS/BB combo when durability would cause a fail."
+}

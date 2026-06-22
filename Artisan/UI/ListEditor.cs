@@ -224,6 +224,16 @@ internal class ListEditor : Window, IDisposable
                 }
 
                 ImGui.SameLine();
+                // Fork: fetch the list's finished crafted components (FC-workshop
+                // submit items) from retainers — the stock button only fetches ingredients.
+                if (ImGui.Button("Restock Components##forkRestockComponents"))
+                {
+                    Task.Run(() => RetainerInfo.RestockListItemsFromRetainers(SelectedList));
+                }
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("Pull the list's finished crafted components (the items you submit to an\nFC workshop, e.g. submarine parts) out of your retainers into your inventory.\nThe normal Restock button only fetches ingredients, not these.");
+
+                ImGui.SameLine();
                 if (ImGui.Checkbox("Only Restock Non-Crafted Items", ref SelectedList.OnlyRestockNonCrafted))
                     P.Config.Save();
 

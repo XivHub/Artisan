@@ -12,10 +12,10 @@
 		<DalamudLibPath>$(appdata)\XIVLauncher\addon\Hooks\dev\</DalamudLibPath>
 		<DalamudPluginPath>$(appdata)\XIVLauncher\installedPlugins\Artisan\$(version)</DalamudPluginPath>
 		<DalamudDevPlugins>$(appdata)\XIVLauncher\devPlugins\Artisan\</DalamudDevPlugins>
-		<AssemblyName>Artisan</AssemblyName>
+		<AssemblyName>ArtisanZhyra</AssemblyName>
 		<RootNamespace>Artisan</RootNamespace>
-		<PackageId>Artisan</PackageId>
-		<Product>Artisan</Product>
+		<PackageId>ArtisanZhyra</PackageId>
+		<Product>ArtisanZhyra</Product>
 		<SatelliteResourceLanguages>en</SatelliteResourceLanguages>
 	</PropertyGroup>
 
@@ -58,7 +58,7 @@
     <None Update="Images\artisan-icon.png">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="Artisan.json">
+    <None Update="ArtisanZhyra.json">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
     <None Update="Images\artisan.png">

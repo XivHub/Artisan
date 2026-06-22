@@ -114,7 +114,7 @@ namespace Artisan.RawInformation
             {
                 if (DateTime.Now > RemainingCheck)
                 {
-                    var current = Math.Max(0, Required - Inventory - RetainerCount - (CanBeCrafted ? TotalCraftable : 0) - (OriginList.SkipIfEnough && OriginList.SkipLiteral ? 0 : AmountUsedForSubcrafts));
+                    var current = (OriginList.SkipIfEnough && OriginList.SkipLiteral) ? ResumeFix.CorrectedRemainingUI(this) : Math.Max(0, Required - Inventory - RetainerCount - (CanBeCrafted ? TotalCraftable : 0) - AmountUsedForSubcrafts);
                     if (remaining != current)
                     {
                         remaining = current;

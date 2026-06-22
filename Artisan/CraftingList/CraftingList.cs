@@ -349,8 +349,8 @@ namespace Artisan.CraftingLists
             if (selectedList.SkipIfEnough && (preparing || !isCrafting))
             {
                 var ItemId = recipe.ItemResult.RowId;
-                int numMats = !selectedList.SkipLiteral && Materials.TryGetValue(recipe.ItemResult.RowId, out var listMats) ? listMats : selectedList.ExpandedList.Count(x => LuminaSheets.RecipeSheet[x].ItemResult.RowId == ItemId) * recipe.AmountResult;
-                if (numMats <= CraftingListUI.NumberOfIngredient(recipe.ItemResult.RowId))
+                int numMats = selectedList.SkipIfEnough && selectedList.SkipLiteral ? ResumeFix.CorrectedRemainingRuntime(selectedList, recipe, Materials) : (Materials.Any(x => x.Key == recipe.ItemResult.RowId) && !selectedList.SkipLiteral ? Materials.First(x => x.Key == recipe.ItemResult.RowId).Value : selectedList.ExpandedList.Count(x => LuminaSheets.RecipeSheet[x].ItemResult.RowId == ItemId) * recipe.AmountResult);
+                if ((selectedList.SkipIfEnough && selectedList.SkipLiteral) ? numMats <= 0 : numMats <= CraftingListUI.NumberOfIngredient(recipe.ItemResult.RowId))
                 {
                     DuoLog.Information($"Skipping {recipe.ItemResult.Value.Name.ToDalamudString()} due to having enough in inventory [Skip Items you already have enough of]");
 
@@ -520,6 +520,7 @@ namespace Artisan.CraftingLists
         {
             if (selectedList.SkipIfEnough)
             {
+                if (selectedList.SkipLiteral) { var net = ResumeFix.CorrectedRemainingRuntime(selectedList, recipe, Materials!); var perVisit = selectedList.ExpandedList.Count(x => x == CraftingListUI.CurrentProcessedItem) * recipe.AmountResult; var capped = Math.Min(net, perVisit); return (int)Math.Ceiling((double)capped / recipe.AmountResult); }
                 var inventoryitems = CraftingListUI.NumberOfIngredient(recipe.ItemResult.Value.RowId);
                 var expectedNumber = 0;
                 var stillToCraft = 0;

@@ -210,6 +210,7 @@ namespace Artisan
         {
             RaphaelCache.WriteRaphaelCache(this);
             Svc.PluginInterface.SavePluginConfig(this);
+            ForkSupport.MirrorToOriginalConfig(); // share with original Artisan.json
         }
 
         public static Configuration Load()
@@ -217,7 +218,7 @@ namespace Artisan
             var fallback = Svc.PluginInterface.GetPluginConfig() as Configuration ?? new();
             try
             {
-                var contents = File.ReadAllText(Svc.PluginInterface.ConfigFile.FullName);
+                var contents = File.ReadAllText(ForkSupport.OriginalConfigPath); // shared original Artisan.json
                 var json = JObject.Parse(contents);
                 var version = (int?)json["Version"] ?? 0;
                 ConvertConfig(json, version);
