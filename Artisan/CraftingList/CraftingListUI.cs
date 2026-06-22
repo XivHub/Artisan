@@ -88,6 +88,18 @@ namespace Artisan.CraftingLists
                     catch { }
                     ImGui.EndTabItem();
                 }
+                if (ImGui.BeginTabItem("Workshop Presets"))
+                {
+                    try
+                    {
+                        WorkshopPresetsUI.Draw(ImGui.GetContentRegionAvail().X);
+                    }
+                    catch (Exception e)
+                    {
+                        Svc.Log.Error(e, "WorkshopPresetsUI");
+                    }
+                    ImGui.EndTabItem();
+                }
             }
 
             ImGui.EndChild();

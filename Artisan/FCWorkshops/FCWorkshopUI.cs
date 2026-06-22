@@ -157,6 +157,18 @@ namespace Artisan.FCWorkshops
                             Notify.Info($"Creating List. Please wait.");
                             Task.Run(() => CreateProjectList(project, true)).ContinueWith((_) => Notify.Success("FC Workshop List Created"));
                         }
+
+                        if (ImGui.Button($"Save as Workshop Preset", new Vector2(ImGui.GetContentRegionAvail().X, 24f.Scale())))
+                        {
+                            P.WorkshopPresets.Add(new CraftingLists.WorkshopPreset { Name = $"{project.ResultItem.Value.Name.ToString()} x{NumberOfLoops}", SequenceRowId = project.RowId, Loops = NumberOfLoops, IncludePrecraft = false });
+                            Notify.Info("Workshop preset saved.");
+                        }
+
+                        if (ImGui.Button($"Save as Workshop Preset (Including pre-crafts)", new Vector2(ImGui.GetContentRegionAvail().X, 24f.Scale())))
+                        {
+                            P.WorkshopPresets.Add(new CraftingLists.WorkshopPreset { Name = $"{project.ResultItem.Value.Name.ToString()} x{NumberOfLoops} (pre-crafts)", SequenceRowId = project.RowId, Loops = NumberOfLoops, IncludePrecraft = true });
+                            Notify.Info("Workshop preset saved.");
+                        }
                     }
                     if (ImGui.CollapsingHeader("Project Parts"))
                     {
@@ -400,40 +412,64 @@ namespace Artisan.FCWorkshops
             }
 
 
-                foreach (var item in value.SupplyItems().Where(x => x.SupplyItem.RowId > 0))
+            AddPhaseRecipesToList(value, NumberOfLoops, includePrecraft, existingList);
+
+            P.Config.Save();
+        }
+
+        public static void AddPhaseRecipesToList(CompanyCraftProcess value, int loops, bool includePrecraft, NewCraftingList target)
+        {
+            foreach (var item in value.SupplyItems().Where(x => x.SupplyItem.RowId > 0))
+            {
+                var timesToAdd = item.SetsRequired * item.SetQuantity * loops;
+                var supplyItemID = LuminaSheets.WorkshopSupplyItemSheet[item.SupplyItem.RowId].Item.Value.RowId;
+                if (LuminaSheets.RecipeSheet.Values.Any(x => x.ItemResult.RowId == supplyItemID))
                 {
-                    var timesToAdd = item.SetsRequired * item.SetQuantity * NumberOfLoops;
-                    var supplyItemID = LuminaSheets.WorkshopSupplyItemSheet[item.SupplyItem.RowId].Item.Value.RowId;
-                    if (LuminaSheets.RecipeSheet.Values.Any(x => x.ItemResult.RowId == supplyItemID))
+                    var recipeID = LuminaSheets.RecipeSheet.Values.First(x => x.ItemResult.RowId == supplyItemID);
+                    if (includePrecraft)
                     {
-                        var recipeID = LuminaSheets.RecipeSheet.Values.First(x => x.ItemResult.RowId == supplyItemID);
-                        if (includePrecraft)
-                        {
-                            Svc.Log.Debug($"I want to add {recipeID.ItemResult.Value.Name.ToDalamudString().ToString()} {timesToAdd} times");
-                            CraftingListUI.AddAllSubcrafts(recipeID, existingList, timesToAdd);
-                        }
+                        Svc.Log.Debug($"I want to add {recipeID.ItemResult.Value.Name.ToDalamudString().ToString()} {timesToAdd} times");
+                        CraftingListUI.AddAllSubcrafts(recipeID, target, timesToAdd);
+                    }
 
-                        if (existingList.Recipes.Any(x => x.ID == recipeID.RowId))
+                    if (target.Recipes.Any(x => x.ID == recipeID.RowId))
+                    {
+                        var addition = (int)Math.Ceiling((double)timesToAdd / recipeID.AmountResult);
+                        target.Recipes.First(x => x.ID == recipeID.RowId).Quantity += addition;
+                    }
+                    else
+                    {
+                        ListItem listItem = new ListItem()
                         {
-                            var addition = timesToAdd / recipeID.AmountResult;
-                            existingList.Recipes.First(x => x.ID == recipeID.RowId).Quantity += addition;
-                        }
-                        else
-                        {
-                            ListItem listItem = new ListItem()
-                            {
-                                ID = recipeID.RowId,
-                                Quantity = timesToAdd / recipeID.AmountResult,
-                                ListItemOptions = new ListItemOptions()
-                            };
+                            ID = recipeID.RowId,
+                            Quantity = (int)Math.Ceiling((double)timesToAdd / recipeID.AmountResult),
+                            ListItemOptions = new ListItemOptions()
+                        };
 
-                            existingList.Recipes.Add(listItem);
-                        }
+                        target.Recipes.Add(listItem);
                     }
                 }
-            
-            P.Config.Save();
+            }
+        }
 
+        public static NewCraftingList BuildProjectList(CompanyCraftSequence project, int loops, bool includePrecraft, NewCraftingList? target)
+        {
+            if (target == null)
+            {
+                target = new NewCraftingList();
+                target.Name = $"{project.ResultItem.Value.Name} x{loops}";
+                target.SetID();
+            }
+
+            foreach (var part in project.CompanyCraftPart.Where(x => x.RowId > 0).Select(x => x.Value))
+            {
+                foreach (var phase in part.CompanyCraftProcess.Where(x => x.RowId > 0))
+                {
+                    AddPhaseRecipesToList(phase.Value!, loops, includePrecraft, target);
+                }
+            }
+
+            return target;
         }
     }
 }

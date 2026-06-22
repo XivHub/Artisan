@@ -46,6 +46,7 @@ public unsafe class Artisan : IDalamudPlugin
     internal UniversalisClient UniversalsisClient;
     internal NativeCraftAll? NCA;
     internal PremadeLists PremadeLists;
+    internal WorkshopPresetLists WorkshopPresets;
     internal AutoRetainerApi? AutoRetainerAPI;
     internal AutoRetainerIPC? AutoRetainerIPC;
 
@@ -76,6 +77,7 @@ public unsafe class Artisan : IDalamudPlugin
         Config = P.Config;
         PluginUi = new();
         PremadeLists = new();
+        WorkshopPresets = new();
         AutoRetainerAPI = new();
         AutoRetainerIPC = new();
 

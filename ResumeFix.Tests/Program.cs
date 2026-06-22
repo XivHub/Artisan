@@ -149,6 +149,9 @@ var triConsumers = new Dictionary<uint, List<(uint, int)>>
     Assert("Test3b 3-tier fresh -> 100", 100, CorrectedPure(NUG, 0, ri0, co0, ow0));
 }
 
+WorkshopQuantityTests.Run(ref passed, ref failed);
+WorkshopPresetSerializationTests.Run(ref passed, ref failed);
+
 Console.WriteLine();
 Console.WriteLine($"Results: {passed} passed, {failed} failed.");
 if (failed > 0) Environment.Exit(1);
