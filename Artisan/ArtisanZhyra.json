@@ -12,5 +12,5 @@
   "RepoUrl": "https://github.com/ZhyraPlugins/Artisan",
   "DalamudApiLevel": 15,
   "DownloadLinkTesting": "https://edgl.dev/share/zhyra/artisan/latest.zip",
-  "ChangeLog": "- Workshop Presets: save FC Workshop projects (submarines) and spawn or append them to a list without the FC Workshops tab.\n- Fix workshop component quantities rounding down (under-craft).\n- Sync with upstream (expert solver profiles for sims).\n- Fix issue with graphical simulator not updating Raphael solutions correctly.\n- Try and prevent adjusting Raphael macros to skip Excellent GS/BB combo when durability would cause a fail."
+  "ChangeLog": "- Sync with upstream: native Craft All button setup moved to the framework thread (stability), simulator now reports insufficient CP instead of erroring, KamiToolKit updated.\n- Workshop Presets: save FC Workshop projects (submarines) and spawn or append them to a list without the FC Workshops tab.\n- Fix workshop component quantities rounding down (under-craft)."
 }
