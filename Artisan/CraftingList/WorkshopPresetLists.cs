@@ -11,7 +11,7 @@ namespace Artisan.CraftingLists
 {
     internal class WorkshopPresetLists
     {
-        // ConfigDirectory resolves to the fork's own (ArtisanZhyra) config dir, so this file is fork-local by design.
+        // Stored as a separate .dat in Artisan's ConfigDirectory; it's a fork-only feature file the official Artisan ignores.
         public List<WorkshopPreset> Presets = [];
 
         public WorkshopPresetLists()

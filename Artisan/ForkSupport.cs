@@ -47,7 +47,7 @@ internal static class ForkSupport
     {
         try
         {
-            var src = Svc.PluginInterface.ConfigFile.FullName; // ArtisanZhyra.json (just written)
+            var src = Svc.PluginInterface.ConfigFile.FullName; // native config file (just written)
             var dst = OriginalConfigPath;
             if (File.Exists(src) && !string.Equals(src, dst, StringComparison.OrdinalIgnoreCase))
                 File.Copy(src, dst, overwrite: true);

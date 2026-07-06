@@ -1,0 +1,16 @@
+{
+  "Author": "Taurenkey (Puni.sh)",
+  "Name": "Artisan (Zhyra fork)",
+  "Punchline": "A 'simple' crafting plugin.",
+  "Description": "The all-in-one crafting plugin.",
+  "InternalName": "Artisan",
+  "ApplicableVersion": "any",
+  "IconUrl": "https://s3.puni.sh/media/plugin/6/icon-3h8wd5b9qr.png",
+  "Tags": [
+    "crafting"
+  ],
+  "RepoUrl": "https://github.com/ZhyraPlugins/Artisan",
+  "DalamudApiLevel": 15,
+  "DownloadLinkTesting": "https://edgl.dev/share/zhyra/artisan/latest.zip",
+  "ChangeLog": "- Internal name changed back to 'Artisan' so other plugins (e.g. GatherBuddy Reborn's 'Import From Artisan') detect it. This fork now replaces the official Artisan rather than installing beside it.\n- Sync with upstream: native Craft All button setup moved to the framework thread (stability), simulator now reports insufficient CP instead of erroring, KamiToolKit updated.\n- Workshop Presets: save FC Workshop projects (submarines) and spawn or append them to a list without the FC Workshops tab."
+}
