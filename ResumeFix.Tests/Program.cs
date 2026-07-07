@@ -72,6 +72,29 @@ static int CorrectedPure(
     int pending = PendingConsumptionPure(itemId, recipeInfo, consumersOfItem, ownedOf, new HashSet<uint>(), 0);
     return Math.Max(0, directSubmit + pending - ownedOf(itemId));
 }
+
+// ---- copied verbatim from CraftingListHelpers.cs ------------------------------
+static void TidyUpPure(
+    IDictionary<uint, int> listQty,
+    bool skipLiteral,
+    IReadOnlyDictionary<uint, int> ingredientDemand,
+    Func<uint, bool> isCraftable,
+    Func<uint, (uint recipeId, int amountResult)?> ingredientRecipe)
+{
+    if (skipLiteral) return;
+
+    foreach (var (itemId, required) in ingredientDemand)
+    {
+        if (!isCraftable(itemId)) continue;
+
+        var rec = ingredientRecipe(itemId);
+        if (rec == null || !listQty.ContainsKey(rec.Value.recipeId)) continue;
+
+        int amountResult = rec.Value.amountResult <= 0 ? 1 : rec.Value.amountResult;
+        if (listQty[rec.Value.recipeId] * amountResult > required)
+            listQty[rec.Value.recipeId] = (int)Math.Ceiling((double)required / amountResult);
+    }
+}
 // -------------------------------------------------------------------------------
 
 int passed = 0, failed = 0;
@@ -147,6 +170,65 @@ var triConsumers = new Dictionary<uint, List<(uint, int)>>
     var (ri0, co0, ow0) = Graph(triRecipes, triConsumers, owned0);
     // Sanity: before any plates, Nugget still needs its full from-zero amount.
     Assert("Test3b 3-tier fresh -> 100", 100, CorrectedPure(NUG, 0, ri0, co0, ow0));
+}
+
+// ---- TidyUpList must not trim an item that is BOTH submitted AND consumed (Cobalt Joint Plate) ----
+// JointPlate (JP) is submitted straight to the workshop (234) AND consumed by the Plate component
+// (Plate qty 168, 1 JP each -> ingredient demand 168). Correct total JP = 234 + 168 = 402.
+//
+// directSubmit is derived exactly as ResumeFix does: max(0, literalTarget - fullDemand),
+// where literalTarget = JP.listQty * amountResult and fullDemand = one-tier ingredient demand.
+//   - Untrimmed list (SkipLiteral guard active): JP.listQty=402 -> directSubmit=234 -> Corrected=402. Correct.
+//   - Trimmed list (the bug: TidyUpList ran and cut JP.listQty to ingredient-demand 168):
+//     directSubmit=0 -> Corrected=168. Undercrafts the 234 submitted plates -> the second bridge runs short.
+{
+    const uint JP2 = 300, PLATE = 301;
+    int fullDemandJP = 168; // Plate recipe (qty 168) eats 1 JP each
+    var jpConsumers = new Dictionary<uint, List<(uint, int)>> { [JP2] = new() { (41, 1) } };
+
+    int Corrected(int jpListQty)
+    {
+        var recipes = new Dictionary<uint, (uint, int, int)>
+        {
+            [40] = (JP2, 1, jpListQty),   // JointPlate recipe, ar=1
+            [41] = (PLATE, 1, 168),       // Plate component recipe, ar=1
+        };
+        int literalTarget = jpListQty * 1;
+        int directSubmit = Math.Max(0, literalTarget - fullDemandJP);
+        var (ri, co, ow) = Graph(recipes, jpConsumers, new());
+        return CorrectedPure(JP2, directSubmit, ri, co, ow);
+    }
+
+    // Fixed: SkipLiteral list is left untrimmed at 402 -> submitted + consumed both crafted.
+    Assert("Test4 both-submitted-and-consumed, untrimmed -> 402", 402, Corrected(402));
+    // Bug repro: had TidyUpList trimmed JP to 168, the submitted portion vanishes.
+    Assert("Test4b trimmed-to-ingredient-demand undercrafts -> 168", 168, Corrected(168));
+}
+
+// ---- TidyUpPure: the actual fix. Guard must preserve literal quantities on SkipLiteral lists ----
+// JointPlate recipe 40 (item JP, ar=1) is listed at 402 = 234 submitted + 168 consumed.
+// Plate component recipe 41 (item PLATE, ar=1) is listed at 168 and eats 1 JP each,
+// so one-tier ingredient demand for JP = 168. Raw mat 500 (not craftable) is never trimmed.
+{
+    const uint JP3 = 300, PLATE3 = 301;
+    var demand = new Dictionary<uint, int> { [JP3] = 168, [500] = 9999 };
+    bool IsCraftable(uint id) => id == JP3;                 // JP is craftable; raw mat 500 is not
+    (uint, int)? IngredientRecipe(uint id) => id == JP3 ? (40u, 1) : ((uint, int)?)null;
+
+    // Fix: SkipLiteral list is left untouched -> JP stays at 402 (submitted + consumed).
+    {
+        var listQty = new Dictionary<uint, int> { [40] = 402, [41] = 168 };
+        TidyUpPure(listQty, skipLiteral: true, demand, IsCraftable, IngredientRecipe);
+        Assert("Test5 SkipLiteral guard preserves JP -> 402", 402, listQty[40]);
+    }
+
+    // Non-SkipLiteral (normal list): tidy still trims genuine over-provision to ingredient demand.
+    {
+        var listQty = new Dictionary<uint, int> { [40] = 402, [41] = 168 };
+        TidyUpPure(listQty, skipLiteral: false, demand, IsCraftable, IngredientRecipe);
+        Assert("Test5b normal list still trims JP -> 168", 168, listQty[40]);
+        Assert("Test5b consumer Plate untouched -> 168", 168, listQty[41]);
+    }
 }
 
 WorkshopQuantityTests.Run(ref passed, ref failed);

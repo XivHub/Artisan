@@ -82,6 +82,7 @@ internal static class CraftingListHelpers
 
     public static void TidyUpList(NewCraftingList list)
     {
+        // one-tier ingredient demand across the list (also populates SelectedRecipesCraftable).
         var tempMaterialList = new Dictionary<uint, int>();
         foreach (var recipe in list.Recipes)
         {
@@ -89,25 +90,58 @@ internal static class CraftingListHelpers
             AddRecipeIngredientsToList(r, ref tempMaterialList, false, list);
         }
 
-        foreach (var requiredItem in tempMaterialList)
-        {
-            if (SelectedRecipesCraftable[requiredItem.Key])
+        // recipeId -> quantity, fed to the pure trim core and written back afterwards.
+        var listQty = new Dictionary<uint, int>();
+        foreach (var r in list.Recipes)
+            listQty[r.ID] = r.Quantity;
+
+        TidyUpPure(
+            listQty,
+            list.SkipLiteral,
+            tempMaterialList,
+            itemId => SelectedRecipesCraftable.TryGetValue(itemId, out var c) && c,
+            itemId =>
             {
-                var recipe = GetIngredientRecipe(requiredItem.Key);
-                if (list.Recipes.Any(x => x.ID == recipe?.RowId))
-                {
-                    double? amountRes = recipe?.AmountResult;
-                    var crafting = list.Recipes.First(x => x.ID == recipe?.RowId).Quantity * amountRes;
+                var rec = GetIngredientRecipe(itemId);
+                return rec == null ? ((uint, int)?)null : (rec.Value.RowId, rec.Value.AmountResult);
+            });
 
-                    if (crafting > requiredItem.Value)
-                    {
-                        double quant = Math.Ceiling(requiredItem.Value / amountRes ?? 0);
-                        list.Recipes.First(x => x.ID == recipe?.RowId).Quantity = (int)quant;
-                    }
-                }
+        foreach (var r in list.Recipes)
+            if (listQty.TryGetValue(r.ID, out var q))
+                r.Quantity = q;
+    }
 
-            }
+    // ---- pure, testable trim core (no Lumina/Dalamud) --------------------------
+    //
+    // MIRRORS the upstream TidyUpList trim body. If an upstream rebase changes that body
+    // (last upstream change 2025-12-30, ~once/2yr), re-port the change into here and keep
+    // the SkipLiteral guard; ResumeFix.Tests/Program.cs copies this method verbatim.
+    //
+    // Trims each listed craftable down to its one-tier ingredient demand, EXCEPT on
+    // SkipLiteral lists (FC-workshop / submarine presets), whose listed quantities are
+    // literal targets. Trimming those drops the directly-submitted portion of any item
+    // that is ALSO consumed as an ingredient (e.g. Cobalt Joint Plate), under-crafting it.
+    //
+    // ingredientRecipe(itemId) -> (recipeId, amountResult) of the recipe producing itemId, or null.
+    internal static void TidyUpPure(
+        IDictionary<uint, int> listQty,
+        bool skipLiteral,
+        IReadOnlyDictionary<uint, int> ingredientDemand,
+        Func<uint, bool> isCraftable,
+        Func<uint, (uint recipeId, int amountResult)?> ingredientRecipe)
+    {
+        if (skipLiteral) return;
+
+        foreach (var (itemId, required) in ingredientDemand)
+        {
+            if (!isCraftable(itemId)) continue;
+
+            var rec = ingredientRecipe(itemId);
+            if (rec == null || !listQty.ContainsKey(rec.Value.recipeId)) continue;
+
+            int amountResult = rec.Value.amountResult <= 0 ? 1 : rec.Value.amountResult;
+            if (listQty[rec.Value.recipeId] * amountResult > required)
+                listQty[rec.Value.recipeId] = (int)Math.Ceiling((double)required / amountResult);
         }
-
     }
 }
