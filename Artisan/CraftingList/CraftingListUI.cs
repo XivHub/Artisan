@@ -83,6 +83,7 @@ namespace Artisan.CraftingLists
                 {
                     try
                     {
+                        CombinedListGenerator.Draw();
                         P.PremadeLists.PremadesUI?.Draw(ImGui.GetContentRegionAvail().X);
                     }
                     catch { }

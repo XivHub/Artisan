@@ -11,6 +11,7 @@ using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
+using static ECommons.GenericHelpers;
 using RecipeNotebookList = Lumina.Excel.Sheets.RecipeNotebookList;
 
 namespace Artisan.CraftingLists
@@ -27,6 +28,54 @@ namespace Artisan.CraftingLists
         }
 
         public List<NewCraftingList> PremadeCraftingLists = [];
+
+        // JournalGenre 165..172 map, in order, to the eight crafter classes.
+        public static readonly string[] CrafterAbbreviations = { "CRP", "BSM", "ARM", "GSM", "LTW", "WVR", "ALC", "CUL" };
+        public const uint FirstCrafterGenre = 165;
+
+        /// <summary>
+        /// Builds a single unified user crafting list from every crafter class-quest whose level falls within
+        /// [minLevel, maxLevel] for the selected job genres. Required items and their subcrafts are merged so the
+        /// whole range can be crafted in one pass. The list is NOT saved; the caller decides.
+        /// </summary>
+        public NewCraftingList BuildCombinedQuestList(int minLevel, int maxLevel, ICollection<uint> genreIds, string name)
+        {
+            var list = new NewCraftingList { Name = name };
+            list.SetID();
+
+            var required = RequiredItems; // load the CSV once, not per quest
+            var quests = Svc.Data.GetExcelSheet<Quest>()
+                .Where(x => genreIds.Contains(x.JournalGenre.RowId))
+                .Where(x => x.ClassJobLevel.First() >= minLevel && x.ClassJobLevel.First() <= maxLevel)
+                .OrderBy(x => x.JournalGenre.RowId)
+                .ThenBy(x => x.ClassJobLevel.First());
+
+            foreach (var quest in quests)
+            {
+                foreach (var reqItem in required.Where(x => x.QuestId == quest.RowId))
+                {
+                    if (!LuminaSheets.RecipeSheet.Values.TryGetFirst(
+                            x => x.ItemResult.Value.RowId == reqItem.ItemId && x.CraftType.RowId == quest.JournalGenre.RowId - FirstCrafterGenre,
+                            out var recipe))
+                        continue;
+
+                    int actualQuantity = (int)(quest.ClassJobLevel.First() == 5 && quest.RowId != 65791 ? 3 : reqItem.Quantity); //Adjust level 5 quests for all but CUL since source data is wrong.
+                    CraftingListUI.AddAllSubcrafts(recipe, list, actualQuantity);
+                    AddOrMerge(list, recipe.RowId, actualQuantity);
+                }
+            }
+
+            return list;
+        }
+
+        private static void AddOrMerge(NewCraftingList list, uint recipeId, int quantity)
+        {
+            var existing = list.Recipes.FirstOrDefault(x => x.ID == recipeId);
+            if (existing != null)
+                existing.Quantity += quantity;
+            else
+                list.Recipes.Add(new ListItem { ID = recipeId, Quantity = quantity });
+        }
 
         public PremadeLists()
         {
