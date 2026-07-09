@@ -22,6 +22,16 @@ namespace Artisan.FCWorkshops
         private static string Search = string.Empty;
         private static int NumberOfLoops = 1;
 
+        // Workshop-created lists must be self-sufficient assuming zero owned items (FC submission
+        // drains inventory as the project progresses), so SkipIfEnough+SkipLiteral must both be set
+        // to enable ResumeFix protection. Save(true) resets SkipIfEnough to DefaultListSkip and never
+        // touches SkipLiteral, so flags must always be (re-)applied AFTER Save(true).
+        internal static void EnsureResumeFlags(NewCraftingList list)
+        {
+            list.SkipIfEnough = true;
+            list.SkipLiteral = true;
+        }
+
         internal static void Draw()
         {
             try
@@ -404,8 +414,7 @@ namespace Artisan.FCWorkshops
                 // an already-populated list keeps whatever flags the user set.
                 if (wasEmpty)
                 {
-                    target.SkipIfEnough = true;
-                    target.SkipLiteral = true;
+                    EnsureResumeFlags(target);
                 }
                 P.Config.Save();
             }).ContinueWith(_ => Notify.Success("Appended to open list"));
@@ -419,6 +428,7 @@ namespace Artisan.FCWorkshops
                 existingList.Name = $"{CurrentProject.ResultItem.Value.Name.ToString()} - Part {partNum} x{NumberOfLoops}";
                 existingList.SetID();
                 existingList.Save(true);
+                EnsureResumeFlags(existingList);
             }
 
             var phaseNum = 1;
@@ -435,6 +445,7 @@ namespace Artisan.FCWorkshops
             existingList.Name = $"{CurrentProject.ResultItem.Value.Name.ToString()} x{NumberOfLoops}";
             existingList.SetID();
             existingList.Save(true);
+            EnsureResumeFlags(existingList);
 
             foreach (var part in value.CompanyCraftPart.Where(x => x.RowId > 0))
             {
@@ -464,6 +475,7 @@ namespace Artisan.FCWorkshops
                 }
                 existingList.SetID();
                 existingList.Save(true);
+                EnsureResumeFlags(existingList);
             }
 
 
@@ -472,39 +484,99 @@ namespace Artisan.FCWorkshops
             P.Config.Save();
         }
 
+        // Merges `crafts` (CRAFT units, i.e. how many times recipeId must run) into `target.Recipes`,
+        // keyed by the recipe's RESULT ITEM rather than its recipe row id. This collapses the
+        // multi-job recipe split (root cause #2: the same item resolved to two different recipe
+        // rows by different callers) and merges demand across appended parts/phases/projects into
+        // a single canonical row per item.
+        //
+        // Row-matching mirrors WorkshopExplosion.MergeByResultItemPure verbatim (see that method's
+        // comment) so the merge-key decision is unit-tested without Lumina.
+        private static void AddOrMergeByResultItem(NewCraftingList target, uint recipeId, uint resultItemId, int crafts)
+        {
+            foreach (var row in target.Recipes)
+            {
+                if (LuminaSheets.RecipeSheet.TryGetValue(row.ID, out var rowRecipe) && rowRecipe.ItemResult.RowId == resultItemId)
+                {
+                    row.Quantity += crafts;
+                    return;
+                }
+            }
+
+            target.Recipes.Add(new ListItem()
+            {
+                ID = recipeId,
+                Quantity = crafts,
+                ListItemOptions = new ListItemOptions()
+            });
+        }
+
+        // Builds the FC-workshop list for one phase, assuming ZERO owned inventory (FC submission
+        // drains inventory as the project progresses, so the list must be self-sufficient from
+        // scratch). Replaces the old per-submit-item AddAllSubcrafts recursion (which could
+        // under-list a shared intermediate consumed by multiple submit items, and split a
+        // multi-job intermediate across two recipe rows) with WorkshopExplosion.ExplodePure, a
+        // single canonical-recipe topological pass over the whole submitted-items demand.
         public static void AddPhaseRecipesToList(CompanyCraftProcess value, int loops, bool includePrecraft, NewCraftingList target)
         {
+            // submitItems: itemId -> demand in ITEM units, summed across supply-item rows that
+            // resolve to the same item. Only items with a canonical recipe are kept (raw materials
+            // are submitted straight to the workshop with no recipe to explode/add).
+            var submitItems = new Dictionary<uint, int>();
             foreach (var item in value.SupplyItems().Where(x => x.SupplyItem.RowId > 0))
             {
                 var timesToAdd = item.SetsRequired * item.SetQuantity * loops;
-                var supplyItemID = LuminaSheets.WorkshopSupplyItemSheet[item.SupplyItem.RowId].Item.Value.RowId;
-                if (LuminaSheets.RecipeSheet.Values.Any(x => x.ItemResult.RowId == supplyItemID))
+                if (!LuminaSheets.WorkshopSupplyItemSheet.TryGetValue(item.SupplyItem.RowId, out var supplyItem))
                 {
-                    var recipeID = LuminaSheets.RecipeSheet.Values.First(x => x.ItemResult.RowId == supplyItemID);
-                    if (includePrecraft)
+                    // Genuine data anomaly: a supply-item row that doesn't resolve. The list-level
+                    // audit can't see a dropped submit item, so surface it here.
+                    Svc.Log.Warning($"AddPhaseRecipesToList: dropping submit of {timesToAdd} — supply item {item.SupplyItem.RowId} not found in WorkshopSupplyItemSheet");
+                    continue;
+                }
+
+                var supplyItemID = supplyItem.Item.Value.RowId;
+                if (CraftingListHelpers.GetIngredientRecipe(supplyItemID) == null)
+                {
+                    // Normally a raw material submitted straight to the workshop (no recipe to craft).
+                    Svc.Log.Debug($"AddPhaseRecipesToList: submit item {supplyItemID} has no recipe — treated as raw, not added to the craft list");
+                    continue;
+                }
+
+                submitItems[supplyItemID] = (submitItems.TryGetValue(supplyItemID, out var existing) ? existing : 0) + timesToAdd;
+            }
+
+            int totalCrafts;
+            if (includePrecraft)
+            {
+                var crafts = WorkshopExplosion.ExplodePure(submitItems, WorkshopExplosion.BuildRecipeGraphDelegate());
+                totalCrafts = crafts.Sum(x => x.crafts);
+                foreach (var (recipeId, craftCount) in crafts)
+                {
+                    if (!LuminaSheets.RecipeSheet.TryGetValue(recipeId, out var recipe))
                     {
-                        Svc.Log.Debug($"I want to add {recipeID.ItemResult.Value.Name.ToDalamudString().ToString()} {timesToAdd} times");
-                        CraftingListUI.AddAllSubcrafts(recipeID, target, timesToAdd);
+                        Svc.Log.Warning($"AddPhaseRecipesToList: dropping {craftCount} craft(s) — recipe {recipeId} from ExplodePure not found in RecipeSheet");
+                        continue;
                     }
 
-                    if (target.Recipes.Any(x => x.ID == recipeID.RowId))
-                    {
-                        var addition = (int)Math.Ceiling((double)timesToAdd / recipeID.AmountResult);
-                        target.Recipes.First(x => x.ID == recipeID.RowId).Quantity += addition;
-                    }
-                    else
-                    {
-                        ListItem listItem = new ListItem()
-                        {
-                            ID = recipeID.RowId,
-                            Quantity = (int)Math.Ceiling((double)timesToAdd / recipeID.AmountResult),
-                            ListItemOptions = new ListItemOptions()
-                        };
-
-                        target.Recipes.Add(listItem);
-                    }
+                    AddOrMergeByResultItem(target, recipeId, recipe.ItemResult.RowId, craftCount);
                 }
             }
+            else
+            {
+                totalCrafts = 0;
+                foreach (var (itemId, itemCount) in submitItems)
+                {
+                    var recipe = CraftingListHelpers.GetIngredientRecipe(itemId);
+                    if (recipe == null)
+                        continue;
+
+                    var craftCount = (int)Math.Ceiling((double)itemCount / Math.Max(1, (int)recipe.Value.AmountResult));
+                    totalCrafts += craftCount;
+                    AddOrMergeByResultItem(target, recipe.Value.RowId, itemId, craftCount);
+                }
+            }
+
+            Svc.Log.Debug($"AddPhaseRecipesToList: {submitItems.Count} submit item(s), includePrecraft={includePrecraft}, {totalCrafts} craft(s) emitted");
         }
 
         public static NewCraftingList BuildProjectList(CompanyCraftSequence project, int loops, bool includePrecraft, NewCraftingList? target)

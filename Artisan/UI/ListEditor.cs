@@ -91,6 +91,12 @@ internal class ListEditor : Window, IDisposable
 
     public bool loading;
 
+    // Transient view state for the "Check List" preflight popup -- never persisted, not part
+    // of any [Serializable] config type.
+    private List<ResumeFix.AuditRow>? checkListRows;
+
+    private bool openCheckListPopup;
+
     public ListEditor(NewCraftingList list)
         : base($"List Editor###{list.ID}")
     {
@@ -202,6 +208,21 @@ internal class ListEditor : Window, IDisposable
                 ImGui.EndDisabled();
 
             ImGui.SameLine();
+            using (ImRaii.Disabled(Endurance.Enable || CraftingListUI.Processing))
+            {
+                if (ImGui.Button("Check List"))
+                {
+                    checkListRows = ResumeFix.ComputeAudit(this.SelectedList);
+                    openCheckListPopup = true;
+                    ImGui.OpenPopup("Check List");
+                }
+            }
+            if (ImGui.IsItemHovered())
+                ImGuiEx.Tooltip("Preflight check: shows which items would come up short with the list as configured, assuming current inventory. Does not start a craft.");
+
+            DrawCheckListPopup();
+
+            ImGui.SameLine();
             var export = ImGuiHelpers.GetButtonSize("Export List");
 
             if (ImGui.Button("Export List"))
@@ -295,6 +316,88 @@ internal class ListEditor : Window, IDisposable
         catch { }
     }
 
+    private void DrawCheckListPopup()
+    {
+        if (!openCheckListPopup)
+            return;
+
+        var windowSize = new Vector2(700 * ImGuiHelpers.GlobalScale,
+            ImGui.GetTextLineHeightWithSpacing() * 20 + 2 * ImGui.GetFrameHeightWithSpacing());
+        ImGui.SetNextWindowSize(windowSize, ImGuiCond.Appearing);
+        ImGui.SetNextWindowPos((ImGui.GetIO().DisplaySize - windowSize) / 2, ImGuiCond.Appearing);
+
+        using var popup = ImRaii.Popup("Check List", ImGuiWindowFlags.Modal);
+        if (!popup)
+        {
+            // Dismissed via Escape / click-outside: keep our flag in sync with ImGui's state.
+            openCheckListPopup = false;
+            return;
+        }
+
+        ImGui.TextWrapped("Assumes current inventory. For FC-workshop lists, run this BEFORE submitting anything " +
+            "- items already submitted to the workshop will show as short (expected). Anomalies on an existing " +
+            "list can't be auto-repaired; delete the list and regenerate it from the FC Workshop tab.");
+
+        if (!SelectedList.SkipLiteral)
+            ImGuiEx.Text(ImGuiColors.DalamudYellow, "(This report assumes a workshop/literal-quantity list.)");
+
+        ImGui.Spacing();
+
+        var rows = checkListRows ?? new();
+        bool anyIssue = rows.Any(x => x.UnderCraft || x.MultiRow);
+
+        if (!anyIssue)
+        {
+            ImGuiEx.Text(ImGuiColors.HealerGreen, "All good - no shortfalls detected");
+        }
+
+        ImGui.TextDisabled("'To Craft' = how many will actually be made (Need minus what you own); 0 = skipped.");
+
+        using (var table = ImRaii.Table("###CheckListTable", 5, ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg))
+        {
+            if (table)
+            {
+                ImGui.TableSetupColumn("Item", ImGuiTableColumnFlags.WidthStretch);
+                ImGui.TableSetupColumn("Need", ImGuiTableColumnFlags.WidthFixed);
+                ImGui.TableSetupColumn("Owned", ImGuiTableColumnFlags.WidthFixed);
+                ImGui.TableSetupColumn("To Craft", ImGuiTableColumnFlags.WidthFixed);
+                ImGui.TableSetupColumn("Flags", ImGuiTableColumnFlags.WidthFixed);
+                ImGui.TableHeadersRow();
+
+                foreach (var row in rows.OrderByDescending(x => x.UnderCraft || x.MultiRow).ThenBy(x => x.Name))
+                {
+                    var flagged = row.UnderCraft || row.MultiRow;
+
+                    var flags = new List<string>();
+                    if (row.UnderCraft)
+                        flags.Add("under-provisioned!");
+                    if (row.MultiRow)
+                        flags.Add("multi-recipe");
+
+                    using var col = ImRaii.PushColor(ImGuiCol.Text, flagged ? (row.UnderCraft ? ImGuiColors.DalamudRed : ImGuiColors.DalamudYellow) : ImGuiColors.DalamudWhite);
+
+                    ImGui.TableNextRow();
+                    ImGui.TableNextColumn();
+                    ImGui.Text(row.Name);
+                    ImGui.TableNextColumn();
+                    ImGui.Text(row.TrueNeed.ToString());
+                    ImGui.TableNextColumn();
+                    ImGui.Text(row.Owned.ToString());
+                    ImGui.TableNextColumn();
+                    ImGui.Text(row.Corrected.ToString());
+                    ImGui.TableNextColumn();
+                    ImGui.Text(flags.Count > 0 ? string.Join(", ", flags) : string.Empty);
+                }
+            }
+        }
+
+        ImGui.Spacing();
+        if (ImGui.Button("Close", -Vector2.UnitX))
+        {
+            openCheckListPopup = false;
+            ImGui.CloseCurrentPopup();
+        }
+    }
 
     private void DrawCopyFromList()
     {

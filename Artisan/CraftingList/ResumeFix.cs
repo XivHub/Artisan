@@ -141,6 +141,122 @@ internal static class ResumeFix
     private static int Owned(uint itemId)
         => CraftingListUI.NumberOfIngredient(itemId) + RetainerInfo.GetRetainerItemCount(itemId);
 
+    // ---- diagnostics -------------------------------------------------------
+    //
+    // One-shot audit of a list's submitted+consumed math, logged at StartList and reused by the
+    // ListEditor "Check List" preflight. The pure math (AuditRowMathPure) is mirrored verbatim
+    // into ResumeFix.Tests/AuditMathTests.cs; if you change it, mirror it there too.
+    //
+    // Anomalies (an item produced by >1 recipe row, or corrected remaining that
+    // can't cover submit+consume) log at Warning so they're visible without
+    // enabling Debug; the full per-item table logs at Debug. No config field,
+    // so it stays within the shared-schema constraint.
+
+    // Per-item audit result. Transient compute type -- never serialized, never added to
+    // Configuration/NewCraftingList.
+    internal readonly record struct AuditRow(
+        uint ItemId,
+        string Name,
+        int Listed,
+        int OneTierDemand,
+        int DirectSubmit,
+        int Pending,
+        int Owned,
+        int Corrected,
+        int TrueNeed,
+        int RowCount,
+        bool MultiRow,
+        bool UnderCraft);
+
+    // Mirrored verbatim into ResumeFix.Tests/AuditMathTests.cs -- keep both in sync.
+    internal static (int directSubmit, int corrected, int trueNeed) AuditRowMathPure(int listed, int oneTier, int pending, int owned)
+    {
+        int directSubmit = Math.Max(0, listed - oneTier);
+        int corrected = Math.Max(0, directSubmit + pending - owned);
+        int trueNeed = directSubmit + oneTier;
+        return (directSubmit, corrected, trueNeed);
+    }
+
+    // Shared core for ComputeAudit (public rows) and AuditList (rows + the raw per-recipe
+    // breakdown needed for the ANOMALY log line's recipe listing).
+    private static (List<AuditRow> rows, Dictionary<uint, List<(uint recipeId, int qty, int ar)>> byItem) ComputeAuditCore(NewCraftingList list)
+    {
+        var rowsOut = new List<AuditRow>();
+        var byItem = new Dictionary<uint, List<(uint recipeId, int qty, int ar)>>();
+        if (list.Recipes.Count == 0) return (rowsOut, byItem);
+
+        // result item -> recipe rows on the list that produce it (recipeId, qty, amountResult)
+        foreach (var r in list.Recipes)
+        {
+            if (!LuminaSheets.RecipeSheet!.TryGetValue(r.ID, out var rec)) continue;
+            var item = rec.ItemResult.RowId;
+            if (!byItem.TryGetValue(item, out var rows)) byItem[item] = rows = new();
+            rows.Add((r.ID, r.Quantity, rec.AmountResult <= 0 ? 1 : rec.AmountResult));
+        }
+
+        // one-tier ingredient demand across the list (mirrors TidyUpList).
+        var demand = new Dictionary<uint, int>();
+        foreach (var r in list.Recipes)
+            CraftingListHelpers.AddRecipeIngredientsToList(LuminaSheets.RecipeSheet![r.ID], ref demand, false, list);
+
+        var (recipeInfo, consumersOfItem) = BuildGraph(list);
+
+        foreach (var (item, rows) in byItem)
+        {
+            var name = LuminaSheets.ItemSheet!.TryGetValue(item, out var it) ? it.Name.ToString() : item.ToString();
+            int literalTarget = rows.Sum(x => x.qty * x.ar);
+            int oneTier = demand.TryGetValue(item, out var d) ? d : 0;
+            int owned = Owned(item);
+            int pending = PendingConsumptionPure(item, recipeInfo, consumersOfItem, Owned, new HashSet<uint>(), 0);
+            var (directSubmit, corrected, trueNeed) = AuditRowMathPure(literalTarget, oneTier, pending, owned);
+
+            // The list can only ever craft `literalTarget` of this item (that's what's
+            // enqueued). If the true need — submit portion plus everything that consumes
+            // it — exceeds that, the list under-crafts.
+            bool multiRow = rows.Count > 1;
+            bool undercraft = trueNeed > literalTarget;
+
+            rowsOut.Add(new AuditRow(item, name, literalTarget, oneTier, directSubmit, pending, owned, corrected, trueNeed, rows.Count, multiRow, undercraft));
+        }
+
+        return (rowsOut, byItem);
+    }
+
+    // Reusable structured audit — used by AuditList's logging and the ListEditor "Check List" UI.
+    internal static List<AuditRow> ComputeAudit(NewCraftingList list) => ComputeAuditCore(list).rows;
+
+    internal static void AuditList(NewCraftingList list)
+    {
+        try
+        {
+            if (list.Recipes.Count == 0) return;
+
+            var (rows, byItem) = ComputeAuditCore(list);
+
+            Svc.Log.Debug($"[ResumeFix.Audit] list '{list.Name}' SkipIfEnough={list.SkipIfEnough} SkipLiteral={list.SkipLiteral} — {rows.Count} distinct result items");
+            foreach (var row in rows)
+            {
+                var itemRows = byItem[row.ItemId];
+
+                if (row.MultiRow || row.UnderCraft)
+                    Svc.Log.Warning(
+                        $"[ResumeFix.Audit] ANOMALY {row.Name} ({row.ItemId}): rows={row.RowCount} " +
+                        $"[{string.Join(", ", itemRows.Select(x => $"recipe {x.recipeId}×{x.qty}(ar{x.ar})"))}] " +
+                        $"listed={row.Listed} oneTierDemand={row.OneTierDemand} directSubmit={row.DirectSubmit} " +
+                        $"pending={row.Pending} owned={row.Owned} corrected={row.Corrected} trueNeed(submit+consume)={row.TrueNeed}" +
+                        (row.MultiRow ? " <MULTI-RECIPE-ROW>" : "") + (row.UnderCraft ? " <UNDER-CRAFT>" : ""));
+                else
+                    Svc.Log.Debug(
+                        $"[ResumeFix.Audit] {row.Name} ({row.ItemId}): listed={row.Listed} oneTierDemand={row.OneTierDemand} " +
+                        $"directSubmit={row.DirectSubmit} pending={row.Pending} owned={row.Owned} corrected={row.Corrected}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Svc.Log.Error(ex, "[ResumeFix.Audit] failed");
+        }
+    }
+
     // ---- entry points used by the three hotspots ---------------------------
 
     // materials = CraftingListFunctions.Materials (one-tier consumption map).

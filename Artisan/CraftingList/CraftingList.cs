@@ -277,7 +277,9 @@ namespace Artisan.CraftingLists
                     CraftingListUI.CurrentProcessedItem = selectedList.ExpandedList[CurrentIndex];
                     CraftingListUI.CurrentProcessedItemCount = 1;
                     CraftingListUI.CurrentProcessedItemIndex = CurrentIndex;
-                    CraftingListUI.CurrentProcessedItemListCount = selectedList.ExpandedList.Count(v => v == CraftingListUI.CurrentProcessedItem);
+                    CraftingListUI.CurrentProcessedItemListCount = CraftingListUI.CraftPlan.Count > 0 && CraftingListUI.CraftPlan.TryGetValue(CraftingListUI.CurrentProcessedItem, out var plannedCount)
+                        ? plannedCount
+                        : selectedList.ExpandedList.Count(v => v == CraftingListUI.CurrentProcessedItem);
 
                 }
                 else if (CraftingListUI.CurrentProcessedItemIndex != CurrentIndex)

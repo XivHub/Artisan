@@ -43,6 +43,35 @@ namespace Artisan.CraftingLists
         public static int CurrentProcessedItemIndex;
         public static int CurrentProcessedItemCount;
         public static int CurrentProcessedItemListCount;
+
+        // Skip-aware craft plan for the run in progress: recipeId -> crafts that will ACTUALLY run
+        // (Need minus what you own), so ETA/progress reflect skips instead of the full listed count.
+        // Empty for non-(SkipIfEnough && SkipLiteral) lists -> display falls back to full counts.
+        // Transient runtime state, never serialized.
+        public static Dictionary<uint, int> CraftPlan = new();
+        public static Dictionary<uint, int> CompletedPerRecipe = new();
+        public static int PlannedTotalCrafts;
+        public static int CompletedCrafts;
+
+        // recipeId -> skip-aware craft count, derived from ResumeFix.ComputeAudit (Corrected = the
+        // net item-units still to craft) divided by the recipe's yield. Only for literal lists.
+        public static Dictionary<uint, int> BuildCraftPlan(NewCraftingList list)
+        {
+            var plan = new Dictionary<uint, int>();
+            if (!(list.SkipIfEnough && list.SkipLiteral))
+                return plan;
+
+            var byItem = ResumeFix.ComputeAudit(list).ToDictionary(r => r.ItemId, r => r.Corrected);
+            foreach (var r in list.Recipes.Distinct())
+            {
+                if (!LuminaSheets.RecipeSheet!.TryGetValue(r.ID, out var rec)) continue;
+                int ar = rec.AmountResult <= 0 ? 1 : rec.AmountResult;
+                int correctedItems = byItem.TryGetValue(rec.ItemResult.RowId, out var c) ? c : 0;
+                plan[r.ID] = (int)Math.Ceiling((double)correctedItems / ar);
+            }
+            return plan;
+        }
+
         private static readonly ListFolders UserListsUI = new(P.Config.NewCraftingLists);
 
         private static bool ItemVendor => DalamudReflector.TryGetDalamudPlugin("Item Vendor Location", out var ivl, false, true);
@@ -204,11 +233,17 @@ namespace Artisan.CraftingLists
                 selectedList.ExpandedList.AddRange(Enumerable.Repeat(r.ID, r.Quantity));
             }
 
+            ResumeFix.AuditList(selectedList);
+
             if (P.ws.Windows.TryGetFirst(x => x.WindowName.Contains(selectedList.ID.ToString(), StringComparison.CurrentCultureIgnoreCase), out var window))
                 window.IsOpen = false;
 
 
-            CraftingListFunctions.ListEndTime = GetListTimer(selectedList);
+            CraftPlan = BuildCraftPlan(selectedList);
+            CompletedPerRecipe = new();
+            PlannedTotalCrafts = CraftPlan.Count > 0 ? CraftPlan.Values.Sum() : selectedList.ExpandedList.Count;
+            CompletedCrafts = 0;
+            CraftingListFunctions.ListEndTime = CraftPlan.Count > 0 ? GetRemainingTimer(selectedList) : GetListTimer(selectedList);
             Crafting.CraftFinished += UpdateListTimer;
             Processing = true;
             Endurance.ToggleEndurance(false);
@@ -216,8 +251,23 @@ namespace Artisan.CraftingLists
 
         public static void UpdateListTimer(Recipe? recipe, CraftState craft, StepState finalStep, bool cancelled)
         {
+            // Count the finished craft (skips never reach here, so this stays skip-aware).
+            if (!cancelled && recipe != null)
+            {
+                CompletedCrafts++;
+                var rid = recipe.Value.RowId;
+                CompletedPerRecipe[rid] = (CompletedPerRecipe.TryGetValue(rid, out var d) ? d : 0) + 1;
+            }
+
             Task.Run(() =>
             {
+                // Literal (workshop) lists have a skip-aware plan: remaining = plan - completed.
+                if (CraftPlan.Count > 0)
+                {
+                    CraftingListFunctions.ListEndTime = GetRemainingTimer(selectedList);
+                    return;
+                }
+
                 TimeSpan output = new();
                 for (int i = CraftingListFunctions.CurrentIndex; i < selectedList.ExpandedList.Count; i++)
                 {
@@ -228,6 +278,26 @@ namespace Artisan.CraftingLists
 
                 CraftingListFunctions.ListEndTime = output;
             });
+        }
+
+        // Skip-aware remaining craft time for a literal list: sum over the craft plan of
+        // (planned - already crafted) * per-craft duration. Uses only the plan/completed counters
+        // and recipe sheets (no inventory reads), so it is safe to call off the framework thread.
+        public static TimeSpan GetRemainingTimer(NewCraftingList selectedList)
+        {
+            TimeSpan output = new();
+            foreach (var (recipeId, planned) in CraftPlan)
+            {
+                int done = CompletedPerRecipe.TryGetValue(recipeId, out var d) ? d : 0;
+                int remaining = Math.Max(0, planned - done);
+                if (remaining == 0) continue;
+
+                var options = selectedList.Recipes.FirstOrDefault(x => x.ID == recipeId)?.ListItemOptions;
+                var dur = GetCraftDuration(recipeId, options?.NQOnly ?? false);
+                if (dur == TimeSpan.Zero) continue;
+                output = output.Add(dur * remaining).Add(TimeSpan.FromSeconds(remaining));
+            }
+            return output;
         }
 
         public static TimeSpan GetListTimer(NewCraftingList selectedList)

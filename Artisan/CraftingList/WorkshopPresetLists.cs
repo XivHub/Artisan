@@ -77,8 +77,7 @@ namespace Artisan.CraftingLists
             var list = FCWorkshopUI.BuildProjectList(seq, preset.Loops, preset.IncludePrecraft, null);
             list.Save(true);
             // Save(true) resets SkipIfEnough to P.Config.DefaultListSkip; set flags after.
-            list.SkipIfEnough = true;
-            list.SkipLiteral = true;
+            FCWorkshopUI.EnsureResumeFlags(list);
             P.Config.Save();
             return list;
         }
@@ -96,8 +95,7 @@ namespace Artisan.CraftingLists
             FCWorkshopUI.BuildProjectList(seq, preset.Loops, preset.IncludePrecraft, target);
             if (wasEmpty)
             {
-                target.SkipIfEnough = true;
-                target.SkipLiteral = true;
+                FCWorkshopUI.EnsureResumeFlags(target);
             }
             P.Config.Save();
         }

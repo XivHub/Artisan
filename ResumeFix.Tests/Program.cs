@@ -233,6 +233,8 @@ var triConsumers = new Dictionary<uint, List<(uint, int)>>
 
 WorkshopQuantityTests.Run(ref passed, ref failed);
 WorkshopPresetSerializationTests.Run(ref passed, ref failed);
+WorkshopExplosionTests.Run(ref passed, ref failed);
+AuditMathTests.Run(ref passed, ref failed);
 
 Console.WriteLine();
 Console.WriteLine($"Results: {passed} passed, {failed} failed.");
