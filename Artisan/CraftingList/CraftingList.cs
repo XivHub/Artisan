@@ -340,7 +340,7 @@ namespace Artisan.CraftingLists
                     var currentRecipe = selectedList.ExpandedList[CurrentIndex];
                     while (currentRecipe == selectedList.ExpandedList[CurrentIndex])
                     {
-                        ListEndTime = ListEndTime.Subtract(CraftingListUI.GetCraftDuration(currentRecipe, type == PreCrafting.CraftType.Quick)).Subtract(TimeSpan.FromSeconds(1));
+                        if (CraftingListUI.CraftPlan.Count == 0) ListEndTime = ListEndTime.Subtract(CraftingListUI.GetCraftDuration(currentRecipe, type == PreCrafting.CraftType.Quick)).Subtract(TimeSpan.FromSeconds(1));
                         CurrentIndex++;
                         if (CurrentIndex == selectedList.ExpandedList.Count)
                             return;
@@ -359,7 +359,7 @@ namespace Artisan.CraftingLists
                     var currentRecipe = selectedList.ExpandedList[CurrentIndex];
                     while (currentRecipe == selectedList.ExpandedList[CurrentIndex])
                     {
-                        ListEndTime = ListEndTime.Subtract(CraftingListUI.GetCraftDuration(currentRecipe, type == PreCrafting.CraftType.Quick)).Subtract(TimeSpan.FromSeconds(1));
+                        if (CraftingListUI.CraftPlan.Count == 0) ListEndTime = ListEndTime.Subtract(CraftingListUI.GetCraftDuration(currentRecipe, type == PreCrafting.CraftType.Quick)).Subtract(TimeSpan.FromSeconds(1));
                         CurrentIndex++;
                         if (CurrentIndex == selectedList.ExpandedList.Count)
                             return;
@@ -376,7 +376,7 @@ namespace Artisan.CraftingLists
 
                 while (currentRecipe == selectedList.ExpandedList[CurrentIndex])
                 {
-                    ListEndTime = ListEndTime.Subtract(CraftingListUI.GetCraftDuration(currentRecipe, type == PreCrafting.CraftType.Quick)).Subtract(TimeSpan.FromSeconds(1));
+                    if (CraftingListUI.CraftPlan.Count == 0) ListEndTime = ListEndTime.Subtract(CraftingListUI.GetCraftDuration(currentRecipe, type == PreCrafting.CraftType.Quick)).Subtract(TimeSpan.FromSeconds(1));
                     CurrentIndex++;
                     if (CurrentIndex == selectedList.ExpandedList.Count)
                         return;
@@ -409,7 +409,7 @@ namespace Artisan.CraftingLists
 
                 while (currentRecipe == selectedList.ExpandedList[CurrentIndex])
                 {
-                    ListEndTime = ListEndTime.Subtract(CraftingListUI.GetCraftDuration(currentRecipe, type == PreCrafting.CraftType.Quick)).Subtract(TimeSpan.FromSeconds(1));
+                    if (CraftingListUI.CraftPlan.Count == 0) ListEndTime = ListEndTime.Subtract(CraftingListUI.GetCraftDuration(currentRecipe, type == PreCrafting.CraftType.Quick)).Subtract(TimeSpan.FromSeconds(1));
                     CurrentIndex++;
                     if (CurrentIndex == selectedList.ExpandedList.Count)
                         return;
@@ -497,7 +497,7 @@ namespace Artisan.CraftingLists
                             var currentRecipe = selectedList.ExpandedList[CurrentIndex];
                             while (currentRecipe == selectedList.ExpandedList[CurrentIndex])
                             {
-                                ListEndTime = ListEndTime.Subtract(CraftingListUI.GetCraftDuration(currentRecipe, type == PreCrafting.CraftType.Quick)).Subtract(TimeSpan.FromSeconds(1));
+                                if (CraftingListUI.CraftPlan.Count == 0) ListEndTime = ListEndTime.Subtract(CraftingListUI.GetCraftDuration(currentRecipe, type == PreCrafting.CraftType.Quick)).Subtract(TimeSpan.FromSeconds(1));
                                 CurrentIndex++;
                                 if (CurrentIndex == selectedList.ExpandedList.Count)
                                     return;
