@@ -161,6 +161,9 @@ namespace Artisan.FCWorkshops
                             Task.Run(() => CreateProjectList(project, true)).ContinueWith((_) => Notify.Success("FC Workshop List Created"));
                         }
 
+                        var capturedProject = project;
+                        DrawAppendToOpenListButtons($"Project{project.RowId}", (t, pc) => BuildProjectList(capturedProject, NumberOfLoops, pc, t));
+
                         if (ImGui.Button($"Save as Workshop Preset", new Vector2(ImGui.GetContentRegionAvail().X, 24f.Scale())))
                         {
                             P.WorkshopPresets.Add(new CraftingLists.WorkshopPreset { Name = $"{project.ResultItem.Value.Name.ToString()} x{NumberOfLoops}", SequenceRowId = project.RowId, Loops = NumberOfLoops, IncludePrecraft = false });
