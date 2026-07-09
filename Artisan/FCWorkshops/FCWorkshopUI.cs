@@ -2,6 +2,7 @@
 using Artisan.IPC;
 using Artisan.RawInformation;
 using Dalamud.Interface.Colors;
+using Dalamud.Interface.Utility.Raii;
 using ECommons.DalamudServices;
 using ECommons.ImGuiMethods;
 using Dalamud.Bindings.ImGui;
@@ -35,7 +36,9 @@ namespace Artisan.FCWorkshops
                     $"The second breaks down each of the parts. " +
                     $"The last is each of the phases. " +
                     $"In each section, you can click a button to create a crafting list with all you " +
-                    $"need to craft that particular section.");
+                    $"need to craft that particular section. You can also append a part or phase to the " +
+                    $"list currently open in the Crafting Lists tab, so several parts (e.g. stern and hull) " +
+                    $"end up in one list.");
 
 
                 ImGui.Separator();
@@ -263,6 +266,10 @@ namespace Artisan.FCWorkshops
                                     Notify.Info($"Creating List. Please wait.");
                                     Task.Run(() => CreatePartList(part, partNum, true)).ContinueWith((_) => Notify.Success("FC Workshop List Created"));
                                 }
+
+                                var capturedPart = part;
+                                var capturedPartNum = partNum;
+                                DrawAppendToOpenListButtons($"Part{part.RowId}", (t, pc) => CreatePartList(capturedPart, capturedPartNum, pc, t));
                             }
                         }
                         ImGui.Unindent();
@@ -344,6 +351,10 @@ namespace Artisan.FCWorkshops
                                         Task.Run(() => CreatePhaseList(phase.Value!, pNum, phaseNum, true)).ContinueWith((_) => Notify.Success("FC Workshop List Created"));
                                     }
 
+                                    var capturedPhase = phase.Value!;
+                                    var capturedPNum = pNum;
+                                    var capturedPhaseNum = phaseNum;
+                                    DrawAppendToOpenListButtons($"Phase{phase.RowId}", (t, pc) => CreatePhaseList(capturedPhase, capturedPNum, capturedPhaseNum, pc, t));
                                 }
                                 phaseNum++;
                             }
@@ -354,6 +365,47 @@ namespace Artisan.FCWorkshops
                 }
             }
             catch { }
+        }
+
+        // Draws the pair of "Append to open list" buttons (with/without pre-crafts). Appends the built
+        // recipes into the list currently open in the Crafting Lists tab (CraftingListUI.selectedList),
+        // mirroring the Workshop Presets "Append to open list" flow so parts/phases can be combined.
+        private static void DrawAppendToOpenListButtons(string idSuffix, Action<NewCraftingList, bool> appendBuild)
+        {
+            bool noList = CraftingListUI.selectedList.ID == 0;
+            using (ImRaii.Disabled(noList))
+            {
+                if (ImGui.Button($"Append to open list###AppendOL{idSuffix}", new Vector2(ImGui.GetContentRegionAvail().X, 24f.Scale())))
+                    RunAppend(appendBuild, false);
+
+                if (ImGui.Button($"Append to open list (Including pre-crafts)###AppendOLPC{idSuffix}", new Vector2(ImGui.GetContentRegionAvail().X, 24f.Scale())))
+                    RunAppend(appendBuild, true);
+            }
+            if (noList && ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
+            {
+                ImGui.BeginTooltip();
+                ImGui.Text("Right-click-select a list in the Crafting Lists tab first.");
+                ImGui.EndTooltip();
+            }
+        }
+
+        private static void RunAppend(Action<NewCraftingList, bool> appendBuild, bool includePrecraft)
+        {
+            var target = CraftingListUI.selectedList;
+            bool wasEmpty = target.Recipes.Count == 0;
+            Notify.Info("Appending to list. Please wait.");
+            Task.Run(() =>
+            {
+                appendBuild(target, includePrecraft);
+                // A fresh FC list needs SkipIfEnough+SkipLiteral (ResumeFix / Restock Components rely on it);
+                // an already-populated list keeps whatever flags the user set.
+                if (wasEmpty)
+                {
+                    target.SkipIfEnough = true;
+                    target.SkipLiteral = true;
+                }
+                P.Config.Save();
+            }).ContinueWith(_ => Notify.Success("Appended to open list"));
         }
 
         private static void CreatePartList(CompanyCraftPart value, string partNum, bool includePrecraft, NewCraftingList? existingList = null)
