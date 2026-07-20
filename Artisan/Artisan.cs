@@ -32,7 +32,7 @@ namespace Artisan;
 
 public unsafe class Artisan : IDalamudPlugin
 {
-    public string Name => "Artisan (Zhyra fork)";
+    public string Name => "Artisan (XivHub fork)";
     private const string commandName = "/artisan";
     internal static Artisan P = null!;
     internal PluginUI? PluginUi;
@@ -56,7 +56,7 @@ public unsafe class Artisan : IDalamudPlugin
     public Artisan(IDalamudPluginInterface pluginInterface)
     {
         ECommonsMain.Init(pluginInterface, this, Module.DalamudReflector);
-        PunishLibMain.Init(pluginInterface, "Artisan (Zhyra fork)", new AboutPlugin() { Sponsor = "https://ko-fi.com/taurenkey" });
+        PunishLibMain.Init(pluginInterface, "Artisan (XivHub fork)", new AboutPlugin() { Sponsor = "https://ko-fi.com/taurenkey" });
         KamiToolKitLibrary.Initialize(pluginInterface);
         P = this;
 

@@ -1,6 +1,6 @@
 {
   "Author": "Taurenkey (Puni.sh)",
-  "Name": "Artisan (Zhyra fork)",
+  "Name": "Artisan (XivHub fork)",
   "Punchline": "A 'simple' crafting plugin.",
   "Description": "The all-in-one crafting plugin.",
   "InternalName": "Artisan",
@@ -9,8 +9,8 @@
   "Tags": [
     "crafting"
   ],
-  "RepoUrl": "https://github.com/ZhyraPlugins/Artisan",
+  "RepoUrl": "https://github.com/XivHub",
   "DalamudApiLevel": 15,
   "DownloadLinkTesting": "https://edgl.dev/share/zhyra/artisan/latest.zip",
-  "ChangeLog": "- Crafting progress and ETA are now skip-aware for workshop/literal lists: 'Current Item Progress', 'Overall List Progress' (crafts done / crafts to do), and the remaining-time estimate now count only what will actually be crafted, instead of the full listed quantity including items you already own.\n- Fixed FC-workshop/submarine lists crafting in the wrong order (components were listed before the intermediates they need, so crafting hit 'Insufficient materials' and skipped them). The generated list is now ordered bottom-up: ingredients are crafted before the parts that consume them.\n- Fixed FC-workshop/submarine lists under-crafting shared intermediates. Root cause: a component craftable by more than one job (e.g. Cobalt Ingot) was split across two recipe rows because submitted items and their sub-crafts used different recipe lookups, so its total demand was under-counted. Generation now uses one canonical recipe per item and computes each intermediate as submit + full downstream consumption from scratch. Also, workshop-created lists are now flagged so the resume/skip protection actually applies (previously only append-to-empty and saved presets set it).\n- New 'Check List' button next to 'Begin Crafting List': a preflight report showing, per item, the total Need, what you Own, and how many will actually be crafted ('To Craft' = Need minus Owned; 0 = skipped), without starting a craft. Flags any under-provisioned or multi-recipe items. Run it before submitting to the workshop.\n- FC Workshops tab: projects, parts and phases now have 'Append to open list' buttons, so you can add several submarine/airship parts (e.g. stern and hull) into the same crafting list instead of only ever creating a new one. Select a list in the Crafting Lists tab, then append.\n- Premade Lists tab: new 'Generate Combined Quest List' panel builds one unified list from all crafter class-quest items in a level range (e.g. 1-50), across any or all crafter jobs, with subcrafts and quantities merged so you can craft the whole range or gather all mats in one go.\n- Fixed workshop/submarine lists under-crafting an intermediate (e.g. Cobalt Joint Plate) when that item is both submitted directly AND consumed to craft another submitted component: the quantity tidy-up no longer trims literal (SkipLiteral) list quantities.\n- Internal name changed back to 'Artisan' so other plugins (e.g. GatherBuddy Reborn's 'Import From Artisan') detect it. This fork now replaces the official Artisan rather than installing beside it.\n- Sync with upstream: native Craft All button setup moved to the framework thread (stability), simulator now reports insufficient CP instead of erroring, KamiToolKit updated.\n- Workshop Presets: save FC Workshop projects (submarines) and spawn or append them to a list without the FC Workshops tab."
+  "ChangeLog": "- Rebranded to 'XivHub': the plugin now displays as 'Artisan (XivHub fork)'. No functional changes to crafting."
 }
