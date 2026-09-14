@@ -130,6 +130,7 @@ namespace Artisan.CraftingLists
                     }
                     ImGui.EndTabItem();
                 }
+                ImGui.EndTabBar();
             }
 
             ImGui.EndChild();
@@ -137,8 +138,9 @@ namespace Artisan.CraftingLists
             ImGui.BeginChild("ListButtons", new Vector2(ImGui.GetContentRegionAvail().X, ImGui.GetContentRegionAvail().Y - 95f));
             if (selectedList.ID != 0)
             {
-                if (Endurance.Enable || Processing)
-                    ImGui.BeginDisabled();
+                // One evaluation: StartList() sets Processing mid-frame, so re-testing
+                // the condition for EndDisabled would pop a scope that was never pushed.
+                using var disabled = ImRaii.Disabled(Endurance.Enable || Processing);
 
                 if (ImGui.Button("Start Crafting List", new Vector2(ImGui.GetContentRegionAvail().X, 30)))
                 {
@@ -174,10 +176,6 @@ namespace Artisan.CraftingLists
                     if (RetainerInfo.AToolsInstalled && !RetainerInfo.AToolsEnabled)
                         ImGuiEx.TextCentered(ImGuiColors.DalamudYellow, $"Please enable Allagan Tools for retainer features.");
                 }
-
-
-                if (Endurance.Enable || Processing)
-                    ImGui.EndDisabled();
             }
 
             if (ImGui.Button("Import List From Clipboard (Artisan Export)", new Vector2(ImGui.GetContentRegionAvail().X, 30)))

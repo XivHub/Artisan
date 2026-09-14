@@ -194,18 +194,17 @@ internal class ListEditor : Window, IDisposable
         {
             var btn = ImGuiHelpers.GetButtonSize("Begin Crafting List");
 
-            if (Endurance.Enable || CraftingListUI.Processing)
-                ImGui.BeginDisabled();
-
-            if (ImGui.Button("Begin Crafting List"))
+            // One evaluation: StartList() sets Processing mid-frame, so re-testing
+            // the condition for EndDisabled would pop a scope that was never pushed.
+            using (ImRaii.Disabled(Endurance.Enable || CraftingListUI.Processing))
             {
-                CraftingListUI.selectedList = this.SelectedList;
-                CraftingListUI.StartList();
-                this.IsOpen = false;
+                if (ImGui.Button("Begin Crafting List"))
+                {
+                    CraftingListUI.selectedList = this.SelectedList;
+                    CraftingListUI.StartList();
+                    this.IsOpen = false;
+                }
             }
-
-            if (Endurance.Enable || CraftingListUI.Processing)
-                ImGui.EndDisabled();
 
             ImGui.SameLine();
             using (ImRaii.Disabled(Endurance.Enable || CraftingListUI.Processing))
@@ -236,8 +235,7 @@ internal class ListEditor : Window, IDisposable
             {
                 ImGui.SameLine();
 
-                if (Endurance.Enable || CraftingListUI.Processing)
-                    ImGui.BeginDisabled();
+                using var disabled = ImRaii.Disabled(Endurance.Enable || CraftingListUI.Processing);
 
                 if (ImGui.Button($"Restock From Retainers"))
                 {
@@ -257,9 +255,6 @@ internal class ListEditor : Window, IDisposable
                 ImGui.SameLine();
                 if (ImGui.Checkbox("Only Restock Non-Crafted Items", ref SelectedList.OnlyRestockNonCrafted))
                     P.Config.Save();
-
-                if (Endurance.Enable || CraftingListUI.Processing)
-                    ImGui.EndDisabled();
             }
             else
             {
