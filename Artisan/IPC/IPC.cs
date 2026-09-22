@@ -38,9 +38,10 @@ namespace Artisan.IPC
         public static ArtisanMode CurrentMode;
 
         /// <summary>
-        /// Version of the <c>Artisan.CreateList</c> contract, returned by <c>Artisan.ApiVersion</c>.
+        /// Version of the list-creation contract, returned by <c>Artisan.ApiVersion</c>. 1 provides
+        /// <c>Artisan.CreateList</c>; 2 adds <c>Artisan.CreateListWithSubcrafts</c> with the same signature.
         /// </summary>
-        internal const int ApiVersion = 1;
+        internal const int ApiVersion = 2;
 
         internal static void Init()
         {
@@ -98,6 +99,7 @@ namespace Artisan.IPC
 
             Svc.PluginInterface.GetIpcProvider<int>("Artisan.ApiVersion").RegisterFunc(() => ApiVersion);
             Svc.PluginInterface.GetIpcProvider<string, List<(uint ItemId, uint Qty)>, int>("Artisan.CreateList").RegisterFunc(CreateList);
+            Svc.PluginInterface.GetIpcProvider<string, List<(uint ItemId, uint Qty)>, int>("Artisan.CreateListWithSubcrafts").RegisterFunc(CreateListWithSubcrafts);
         }
 
         internal static void Dispose()
@@ -156,6 +158,7 @@ namespace Artisan.IPC
 
             Svc.PluginInterface.GetIpcProvider<int>("Artisan.ApiVersion").UnregisterFunc();
             Svc.PluginInterface.GetIpcProvider<string, List<(uint ItemId, uint Qty)>, int>("Artisan.CreateList").UnregisterFunc();
+            Svc.PluginInterface.GetIpcProvider<string, List<(uint ItemId, uint Qty)>, int>("Artisan.CreateListWithSubcrafts").UnregisterFunc();
         }
 
         static bool GetEnduranceStatus()
@@ -659,14 +662,22 @@ namespace Artisan.IPC
         /// Creates and saves a crafting list from item ids and quantities. Quantities convert the way the
         /// Teamcraft importer converts a line: crafts = ceil(quantity / yield), merged by recipe id. The recipe
         /// is the first usable one (<c>Number != 0</c>) in <see cref="LuminaSheets.RecipeSheet"/> order (class job
-        /// level, then item name), so an item several jobs can craft gets its lowest-level recipe. Only the final items are added; sub-crafts for their
-        /// ingredients are not.
+        /// level, then item name), so an item several jobs can craft gets its lowest-level recipe. Only the final
+        /// items are added; <see cref="CreateListWithSubcrafts"/> also adds their intermediate crafts.
         /// </summary>
         /// <param name="name">List name; blank or whitespace becomes "Imported list".</param>
         /// <param name="items">Item ids with the number of items wanted. Zero quantities and items without a
         /// recipe are skipped.</param>
         /// <returns>The new list's id, or -1 when no item has a recipe or the list could not be created.</returns>
-        public static int CreateList(string name, List<(uint ItemId, uint Qty)> items)
+        public static int CreateList(string name, List<(uint ItemId, uint Qty)> items) => BuildList(name, items, false);
+
+        /// <summary>
+        /// <see cref="CreateList"/>, plus every intermediate craft each item needs, added the way the list editor's
+        /// "add with sub-crafts" adds them (<see cref="CraftingListUI.AddAllSubcrafts"/>, ahead of the item itself).
+        /// </summary>
+        public static int CreateListWithSubcrafts(string name, List<(uint ItemId, uint Qty)> items) => BuildList(name, items, true);
+
+        private static int BuildList(string name, List<(uint ItemId, uint Qty)> items, bool withSubcrafts)
         {
             try
             {
@@ -683,6 +694,9 @@ namespace Artisan.IPC
                         continue;
 
                     var crafts = (int)Math.Ceiling(qty / (double)Math.Max(1, (int)recipe.Value.AmountResult));
+                    if (withSubcrafts)
+                        CraftingListUI.AddAllSubcrafts(recipe.Value, list, 1, crafts);
+
                     var existing = list.Recipes.FirstOrDefault(x => x.ID == recipe.Value.RowId);
                     if (existing is not null)
                         existing.Quantity += crafts;

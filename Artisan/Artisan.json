@@ -12,5 +12,5 @@
   "RepoUrl": "https://github.com/XivHub",
   "DalamudApiLevel": 15,
   "DownloadLinkTesting": "https://edgl.dev/share/zhyra/artisan/latest.zip",
-  "ChangeLog": "- Added the Artisan.CreateList IPC: other plugins can create a crafting list from item ids and quantities.\n- Fixed IPC teardown unregistering several providers with the wrong types."
+  "ChangeLog": "- Added the Artisan.CreateListWithSubcrafts IPC: like Artisan.CreateList, and also adds every intermediate craft."
 }
