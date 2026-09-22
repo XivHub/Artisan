@@ -658,9 +658,8 @@ namespace Artisan.IPC
         /// <summary>
         /// Creates and saves a crafting list from item ids and quantities. Quantities convert the way the
         /// Teamcraft importer converts a line: crafts = ceil(quantity / yield), merged by recipe id. The recipe
-        /// is the first <see cref="CraftingListHelpers.GetIngredientRecipe"/> returns, which follows
-        /// <see cref="LuminaSheets.RecipeSheet"/> order (class job level, then item name), so an item several
-        /// jobs can craft gets its lowest-level recipe. Only the final items are added; sub-crafts for their
+        /// is the first usable one (<c>Number != 0</c>) in <see cref="LuminaSheets.RecipeSheet"/> order (class job
+        /// level, then item name), so an item several jobs can craft gets its lowest-level recipe. Only the final items are added; sub-crafts for their
         /// ingredients are not.
         /// </summary>
         /// <param name="name">List name; blank or whitespace becomes "Imported list".</param>
@@ -677,9 +676,10 @@ namespace Artisan.IPC
                     if (qty == 0)
                         continue;
 
-                    var recipe = CraftingListHelpers.GetIngredientRecipe(itemId);
-                    // Save() removes recipes whose Number is 0, which would leave an empty list behind.
-                    if (recipe is null || recipe.Value.Number == 0)
+                    // Save() drops recipes whose Number is 0, so those are skipped before picking rather than
+                    // after: an item whose lowest-level recipe is unusable falls through to its next one.
+                    var recipe = LuminaSheets.RecipeSheet!.Values.FirstOrNull(x => x.ItemResult.RowId == itemId && x.Number != 0);
+                    if (recipe is null)
                         continue;
 
                     var crafts = (int)Math.Ceiling(qty / (double)Math.Max(1, (int)recipe.Value.AmountResult));
