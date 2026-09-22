@@ -36,6 +36,12 @@ namespace Artisan.IPC
         }
 
         public static ArtisanMode CurrentMode;
+
+        /// <summary>
+        /// Version of the <c>Artisan.CreateList</c> contract, returned by <c>Artisan.ApiVersion</c>.
+        /// </summary>
+        internal const int ApiVersion = 1;
+
         internal static void Init()
         {
             Svc.PluginInterface.GetIpcProvider<bool>("Artisan.GetEnduranceStatus").RegisterFunc(GetEnduranceStatus);
@@ -89,6 +95,9 @@ namespace Artisan.IPC
             Svc.PluginInterface.GetIpcProvider<object>("Artisan.SetTempStandardMinimumStepsBeforeMiracleBackToNormal").RegisterAction(SetTempStandardMinimumStepsBeforeMiracleBackToNormal);
 
             Svc.PluginInterface.GetIpcProvider<List<(string, int)>>("Artisan.ReturnMacroInfo").RegisterFunc(ReturnMacroInfo);
+
+            Svc.PluginInterface.GetIpcProvider<int>("Artisan.ApiVersion").RegisterFunc(() => ApiVersion);
+            Svc.PluginInterface.GetIpcProvider<string, List<(uint ItemId, uint Qty)>, int>("Artisan.CreateList").RegisterFunc(CreateList);
         }
 
         internal static void Dispose()
@@ -104,13 +113,13 @@ namespace Artisan.IPC
             Svc.PluginInterface.GetIpcProvider<bool, object>("Artisan.SetStopRequest").UnregisterAction();
 
             Svc.PluginInterface.GetIpcProvider<ushort, int, object>("Artisan.CraftItem").UnregisterAction();
-            Svc.PluginInterface.GetIpcProvider<ushort, int, object>("Artisan.IsBusy").UnregisterFunc();
+            Svc.PluginInterface.GetIpcProvider<bool>("Artisan.IsBusy").UnregisterFunc();
 
             Svc.PluginInterface.GetIpcProvider<uint, string, bool, object>("Artisan.ChangeSolver").UnregisterAction();
             Svc.PluginInterface.GetIpcProvider<uint, object>("Artisan.SetTempSolverBackToNormal").UnregisterAction();
 
             Svc.PluginInterface.GetIpcProvider<uint, uint, bool, bool, object>("Artisan.ChangeFood").UnregisterAction();
-            Svc.PluginInterface.GetIpcProvider<uint>("Artisan.SetTempFoodBackToNormal").UnregisterAction();
+            Svc.PluginInterface.GetIpcProvider<uint, object>("Artisan.SetTempFoodBackToNormal").UnregisterAction();
 
             Svc.PluginInterface.GetIpcProvider<uint, uint, bool, bool, object>("Artisan.ChangePotion").UnregisterAction();
             Svc.PluginInterface.GetIpcProvider<uint, object>("Artisan.SetTempPotionBackToNormal").UnregisterAction();
@@ -134,9 +143,6 @@ namespace Artisan.IPC
             Svc.PluginInterface.GetIpcProvider<uint, uint, bool, object>("Artisan.ChangeExpertMaxMaterialMiracleUses").UnregisterAction();
             Svc.PluginInterface.GetIpcProvider<uint, object>("Artisan.SetTempExpertMaxMaterialMiracleUsesBackToNormal").UnregisterAction();
 
-            Svc.PluginInterface.GetIpcProvider<uint, uint, bool, object>("Artisan.ChangeExpertMaxMaterialMiracleUses").UnregisterAction();
-            Svc.PluginInterface.GetIpcProvider<uint, object>("Artisan.SetTempExpertMaxMaterialMiracleUsesBackToNormal").UnregisterAction();
-
             Svc.PluginInterface.GetIpcProvider<uint, uint, bool, object>("Artisan.ChangeExpertMinimumStepsBeforeMiracle").UnregisterAction();
             Svc.PluginInterface.GetIpcProvider<uint, object>("Artisan.SetTempExpertMinimumStepsBeforeMiracleBackToNormal").UnregisterAction();
 
@@ -146,7 +152,10 @@ namespace Artisan.IPC
             Svc.PluginInterface.GetIpcProvider<uint, bool, object>("Artisan.ChangeStandardMinimumStepsBeforeMiracle").UnregisterAction();
             Svc.PluginInterface.GetIpcProvider<object>("Artisan.SetTempStandardMinimumStepsBeforeMiracleBackToNormal").UnregisterAction();
 
-            Svc.PluginInterface.GetIpcProvider<List<(string, uint)>>("Artisan.ReturnMacroInfo").UnregisterFunc();
+            Svc.PluginInterface.GetIpcProvider<List<(string, int)>>("Artisan.ReturnMacroInfo").UnregisterFunc();
+
+            Svc.PluginInterface.GetIpcProvider<int>("Artisan.ApiVersion").UnregisterFunc();
+            Svc.PluginInterface.GetIpcProvider<string, List<(uint ItemId, uint Qty)>, int>("Artisan.CreateList").UnregisterFunc();
         }
 
         static bool GetEnduranceStatus()
@@ -644,6 +653,55 @@ namespace Artisan.IPC
             }
 
             return macros;
+        }
+
+        /// <summary>
+        /// Creates and saves a crafting list from item ids and quantities. Quantities convert the way the
+        /// Teamcraft importer converts a line: crafts = ceil(quantity / yield), merged by recipe id. The recipe
+        /// is the first <see cref="CraftingListHelpers.GetIngredientRecipe"/> returns, which follows
+        /// <see cref="LuminaSheets.RecipeSheet"/> order (class job level, then item name), so an item several
+        /// jobs can craft gets its lowest-level recipe. Only the final items are added; sub-crafts for their
+        /// ingredients are not.
+        /// </summary>
+        /// <param name="name">List name; blank or whitespace becomes "Imported list".</param>
+        /// <param name="items">Item ids with the number of items wanted. Zero quantities and items without a
+        /// recipe are skipped.</param>
+        /// <returns>The new list's id, or -1 when no item has a recipe or the list could not be created.</returns>
+        public static int CreateList(string name, List<(uint ItemId, uint Qty)> items)
+        {
+            try
+            {
+                var list = new NewCraftingList { Name = string.IsNullOrWhiteSpace(name) ? "Imported list" : name };
+                foreach (var (itemId, qty) in items)
+                {
+                    if (qty == 0)
+                        continue;
+
+                    var recipe = CraftingListHelpers.GetIngredientRecipe(itemId);
+                    // Save() removes recipes whose Number is 0, which would leave an empty list behind.
+                    if (recipe is null || recipe.Value.Number == 0)
+                        continue;
+
+                    var crafts = (int)Math.Ceiling(qty / (double)Math.Max(1, (int)recipe.Value.AmountResult));
+                    var existing = list.Recipes.FirstOrDefault(x => x.ID == recipe.Value.RowId);
+                    if (existing is not null)
+                        existing.Quantity += crafts;
+                    else
+                        list.Recipes.Add(new ListItem { ID = recipe.Value.RowId, Quantity = crafts, ListItemOptions = new() });
+                }
+
+                if (list.Recipes.Count == 0)
+                    return -1;
+
+                list.SetID();
+                list.Save(true);
+                return list.ID;
+            }
+            catch (Exception ex)
+            {
+                ex.Log();
+                return -1;
+            }
         }
 
         public enum ArtisanMode

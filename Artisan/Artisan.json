@@ -12,5 +12,5 @@
   "RepoUrl": "https://github.com/XivHub",
   "DalamudApiLevel": 15,
   "DownloadLinkTesting": "https://edgl.dev/share/zhyra/artisan/latest.zip",
-  "ChangeLog": "- Synced with upstream: premade lists for relic tools and Studium, Crystarium and Wachu deliveries, plus a macro information IPC.\n- Fixed the list windows logging ImGui errors after starting a crafting list."
+  "ChangeLog": "- Added the Artisan.CreateList IPC: other plugins can create a crafting list from item ids and quantities.\n- Fixed IPC teardown unregistering several providers with the wrong types."
 }
