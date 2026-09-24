@@ -39,9 +39,10 @@ namespace Artisan.IPC
 
         /// <summary>
         /// Version of the list-creation contract, returned by <c>Artisan.ApiVersion</c>. 1 provides
-        /// <c>Artisan.CreateList</c>; 2 adds <c>Artisan.CreateListWithSubcrafts</c> with the same signature.
+        /// <c>Artisan.CreateList</c>; 2 adds <c>Artisan.CreateListWithSubcrafts</c> with the same signature;
+        /// 3 adds <c>Artisan.ImportList</c>.
         /// </summary>
-        internal const int ApiVersion = 2;
+        internal const int ApiVersion = 3;
 
         internal static void Init()
         {
@@ -100,6 +101,7 @@ namespace Artisan.IPC
             Svc.PluginInterface.GetIpcProvider<int>("Artisan.ApiVersion").RegisterFunc(() => ApiVersion);
             Svc.PluginInterface.GetIpcProvider<string, List<(uint ItemId, uint Qty)>, int>("Artisan.CreateList").RegisterFunc(CreateList);
             Svc.PluginInterface.GetIpcProvider<string, List<(uint ItemId, uint Qty)>, int>("Artisan.CreateListWithSubcrafts").RegisterFunc(CreateListWithSubcrafts);
+            Svc.PluginInterface.GetIpcProvider<string, int>("Artisan.ImportList").RegisterFunc(ImportList);
         }
 
         internal static void Dispose()
@@ -158,6 +160,7 @@ namespace Artisan.IPC
 
             Svc.PluginInterface.GetIpcProvider<int>("Artisan.ApiVersion").UnregisterFunc();
             Svc.PluginInterface.GetIpcProvider<string, List<(uint ItemId, uint Qty)>, int>("Artisan.CreateList").UnregisterFunc();
+            Svc.PluginInterface.GetIpcProvider<string, int>("Artisan.ImportList").UnregisterFunc();
             Svc.PluginInterface.GetIpcProvider<string, List<(uint ItemId, uint Qty)>, int>("Artisan.CreateListWithSubcrafts").UnregisterFunc();
         }
 
@@ -676,6 +679,50 @@ namespace Artisan.IPC
         /// "add with sub-crafts" adds them (<see cref="CraftingListUI.AddAllSubcrafts"/>, ahead of the item itself).
         /// </summary>
         public static int CreateListWithSubcrafts(string name, List<(uint ItemId, uint Qty)> items) => BuildList(name, items, true);
+
+        /// <summary>
+        /// Imports a list from Artisan export JSON, the text the list editor's "Import List From Clipboard" takes, and
+        /// returns its id, or -1 for blank or unparsable JSON or a list with no recipes. <c>Save(true)</c> resets
+        /// <c>SkipIfEnough</c> from <c>DefaultListSkip</c> and, when <c>DefaultListQuickSynth</c> is on, writes
+        /// <c>NQOnly = true</c> into every row's options, so the list's skip settings, its quick-synth flag and each
+        /// row's options are captured as values beforehand and applied again after it. <c>Materia</c>,
+        /// <c>Repair</c>, <c>RepairPercent</c> and <c>TidyAfter</c> keep the user's list defaults that
+        /// <c>Save(true)</c> sets.
+        /// </summary>
+        public static int ImportList(string json)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(json) || !json.TryParseJson<NewCraftingList>(out var list) || list is null || list.Recipes.Count == 0)
+                    return -1;
+
+                var skipIfEnough = list.SkipIfEnough;
+                var skipLiteral = list.SkipLiteral;
+                var quickSynth = list.AddAsQuickSynth;
+                var options = new Dictionary<uint, (bool NQOnly, bool Skipping)>();
+                foreach (var row in list.Recipes)
+                    options.TryAdd(row.ID, (row.ListItemOptions?.NQOnly ?? false, row.ListItemOptions?.Skipping ?? false));
+
+                list.SetID();
+                list.Save(true);
+
+                list.SkipIfEnough = skipIfEnough;
+                list.SkipLiteral = skipLiteral;
+                list.AddAsQuickSynth = quickSynth;
+                foreach (var row in list.Recipes)
+                {
+                    var (nqOnly, skipping) = options.TryGetValue(row.ID, out var o) ? o : default;
+                    row.ListItemOptions = new ListItemOptions { NQOnly = nqOnly, Skipping = skipping };
+                }
+                P.Config.Save();
+                return list.ID;
+            }
+            catch (Exception ex)
+            {
+                ex.Log();
+                return -1;
+            }
+        }
 
         private static int BuildList(string name, List<(uint ItemId, uint Qty)> items, bool withSubcrafts)
         {
