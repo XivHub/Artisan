@@ -95,6 +95,12 @@ static void TidyUpPure(
             listQty[rec.Value.recipeId] = (int)Math.Ceiling((double)required / amountResult);
     }
 }
+
+// ---- copied verbatim from NqProgressOnly.cs -----------------------------------
+static bool UseProgressOnly(bool listRunning, bool nqOnly, bool quickSynth, bool expert, int requiredQuality, bool collectible)
+{
+    return listRunning && nqOnly && !quickSynth && !expert && requiredQuality == 0 && !collectible;
+}
 // -------------------------------------------------------------------------------
 
 int passed = 0, failed = 0;
@@ -229,6 +235,26 @@ var triConsumers = new Dictionary<uint, List<(uint, int)>>
         Assert("Test5b normal list still trims JP -> 168", 168, listQty[40]);
         Assert("Test5b consumer Plate untouched -> 168", 168, listQty[41]);
     }
+}
+
+// ---- UseProgressOnly: an NQOnly list row crafted normally runs progress-only ----
+{
+    void Check(string label, bool expected, bool actual) => Assert(label, expected ? 1 : 0, actual ? 1 : 0);
+
+    Check("Test6 list NQOnly row, normal recipe -> progress only", true,
+        UseProgressOnly(listRunning: true, nqOnly: true, quickSynth: false, expert: false, requiredQuality: 0, collectible: false));
+    Check("Test6b no list running -> recipe solver", false,
+        UseProgressOnly(listRunning: false, nqOnly: true, quickSynth: false, expert: false, requiredQuality: 0, collectible: false));
+    Check("Test6c row not NQOnly -> recipe solver", false,
+        UseProgressOnly(listRunning: true, nqOnly: false, quickSynth: false, expert: false, requiredQuality: 0, collectible: false));
+    Check("Test6d quick synthesis -> recipe solver", false,
+        UseProgressOnly(listRunning: true, nqOnly: true, quickSynth: true, expert: false, requiredQuality: 0, collectible: false));
+    Check("Test6e expert recipe -> recipe solver", false,
+        UseProgressOnly(listRunning: true, nqOnly: true, quickSynth: false, expert: true, requiredQuality: 0, collectible: false));
+    Check("Test6f requiredQuality > 0 -> recipe solver", false,
+        UseProgressOnly(listRunning: true, nqOnly: true, quickSynth: false, expert: false, requiredQuality: 1500, collectible: false));
+    Check("Test6g collectible -> recipe solver", false,
+        UseProgressOnly(listRunning: true, nqOnly: true, quickSynth: false, expert: false, requiredQuality: 0, collectible: true));
 }
 
 WorkshopQuantityTests.Run(ref passed, ref failed);

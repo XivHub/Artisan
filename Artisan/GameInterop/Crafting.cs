@@ -388,7 +388,9 @@ public static unsafe class Crafting
                     CurCraft.CurrentSteadyHandCharges = SteadyHandCharges();
 
                 var raphConfig = RaphaelCache.GetRaphConfig(CurCraft, true);
-                if (rc.CurrentSolverType.Contains("Raphael") && !RaphaelCache.HasSolution(CurCraft, raphConfig, out _))
+                // A progress-only list row never uses the Raphael solution, so it must not wait for one.
+                if (rc.CurrentSolverType.Contains("Raphael") && !CraftingProcessor.ListRowWantsProgressOnly(CurRecipe.Value.RowId, CurCraft)
+                    && !RaphaelCache.HasSolution(CurCraft, raphConfig, out _))
                 {
                     if (RaphaelCache.CLIExists())
                     {

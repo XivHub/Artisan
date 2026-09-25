@@ -1,4 +1,5 @@
 ﻿using Artisan.Autocraft;
+using Artisan.CraftingLists;
 using Artisan.CraftingLogic.Solvers;
 using Artisan.GameInterop;
 using Artisan.RawInformation;
@@ -118,6 +119,20 @@ public static class CraftingProcessor
         }
     }
 
+    /// <summary>Whether the running crafting list's current row asks for this craft to run
+    /// progress-only (<see cref="NqProgressOnly"/>). The row lookup matches
+    /// CraftingListFunctions.ProcessList. The recipe must be the list's current item: a paused
+    /// list stays Processing while the player crafts by hand. Quick synthesis never reaches a
+    /// solver, so a caller is never deciding for one.</summary>
+    internal static bool ListRowWantsProgressOnly(uint recipeRowId, CraftState craft)
+    {
+        var listRow = CraftingListUI.CurrentProcessedItem == recipeRowId
+            ? CraftingListUI.selectedList.Recipes.FirstOrDefault(x => x.ID == CraftingListUI.CurrentProcessedItem)
+            : null;
+        return NqProgressOnly.UseProgressOnly(CraftingListUI.Processing, listRow?.ListItemOptions?.NQOnly ?? false, false,
+            craft.CraftExpert, craft.CraftRequiredQuality, craft.CraftCollectible);
+    }
+
     private static void OnCraftStarted(Lumina.Excel.Sheets.Recipe recipe, CraftState craft, StepState initialStep, bool trial)
     {
         Svc.Log.Debug($"[CProc] OnCraftStarted #{recipe.RowId} '{recipe.ItemResult.Value.Name.ToDalamudString()}' (trial={trial}) (cosmic={craft.IsCosmic}) (IQ={craft.InitialQuality}) (PQ={craft.CraftProgress}/{craft.CraftQualityMax})");
@@ -141,7 +156,9 @@ public static class CraftingProcessor
         {
             // if we didn't provide an explicit solver, create one - but make sure if we have manually assigned one, it is actually supported
             var recipeConfig = P.Config.RecipeConfigs.GetValueOrDefault(recipe.RowId);
-            var autoSolver = GetSolverForRecipe(recipeConfig, craft);
+            var autoSolver = ListRowWantsProgressOnly(recipe.RowId, craft)
+                ? SolverDefinitions.OfType<ProgressOnlySolverDefinition>().First().Flavours(craft).First()
+                : GetSolverForRecipe(recipeConfig, craft);
             if (autoSolver.UnsupportedReason.Length > 0)
             {
                 SolverFailed?.Invoke(recipe, autoSolver.UnsupportedReason);
