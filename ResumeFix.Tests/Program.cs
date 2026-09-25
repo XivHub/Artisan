@@ -101,6 +101,32 @@ static bool UseProgressOnly(bool listRunning, bool nqOnly, bool quickSynth, bool
 {
     return listRunning && nqOnly && !quickSynth && !expert && requiredQuality == 0 && !collectible;
 }
+
+// ---- copied verbatim from HqSpread.cs -----------------------------------------
+static bool TakesHq(bool nqOnly, int literalTarget, int oneTierDemand) => !nqOnly && literalTarget > oneTierDemand;
+
+static int CraftsLeft(int net, int amountResult, int remainingEntries)
+    => Math.Max(0, Math.Min((int)Math.Ceiling(net / (double)Math.Max(1, amountResult)), remainingEntries));
+
+static int PerCraftHq(int availHq, IEnumerable<(int Crafts, int Amount)> rows)
+{
+    var all = rows.ToList();
+    var maxAmount = all.Count == 0 ? 0 : all.Max(r => r.Amount);
+    for (var h = 0; h < maxAmount; h++)
+    {
+        if (all.Sum(r => r.Crafts * Math.Min(h, r.Amount)) >= availHq)
+            return h;
+    }
+    return maxAmount;
+}
+
+static (int Nq, int Hq) Split(int total, int availNq, int availHq, int perCraftHq, bool takesHq)
+{
+    var hq = takesHq
+        ? Math.Min(total, Math.Min(availHq, Math.Max(perCraftHq, total - availNq)))
+        : Math.Min(availHq, Math.Max(0, total - availNq));
+    return (total - hq, hq);
+}
 // -------------------------------------------------------------------------------
 
 int passed = 0, failed = 0;
@@ -255,6 +281,115 @@ var triConsumers = new Dictionary<uint, List<(uint, int)>>
         UseProgressOnly(listRunning: true, nqOnly: true, quickSynth: false, expert: false, requiredQuality: 1500, collectible: false));
     Check("Test6g collectible -> recipe solver", false,
         UseProgressOnly(listRunning: true, nqOnly: true, quickSynth: false, expert: false, requiredQuality: 0, collectible: true));
+}
+
+// ---- HqSpread: HQ units shared across the crafts of the target rows that consume an item ----
+{
+    void Pair(string label, (int Nq, int Hq) expected, (int Nq, int Hq) actual)
+    {
+        if (expected == actual) { Console.WriteLine($"[PASS] {label}: expected={expected}, actual={actual}"); passed++; }
+        else { Console.WriteLine($"[FAIL] {label}: expected={expected}, actual={actual}"); failed++; }
+    }
+    void Check(string label, bool expected, bool actual) => Assert(label, expected ? 1 : 0, actual ? 1 : 0);
+
+    // One target row alone: its crafts left are the only ones sharing the HQ units.
+    (int, int) Alone(int total, int availNq, int availHq, int craftsLeft, bool takesHq)
+        => Split(total, availNq, availHq, PerCraftHq(availHq, new[] { (craftsLeft, total) }), takesHq);
+
+    Pair("Test7 one HQ per craft held for 10 crafts -> (1,1)", (1, 1), Alone(2, 10, 10, 10, true));
+    Pair("Test7b single-unit slot, no NQ -> (0,1)", (0, 1), Alone(1, 0, 10, 10, true));
+    Pair("Test7c no HQ held -> (2,0)", (2, 0), Alone(2, 20, 0, 10, true));
+    Pair("Test7d NQ short -> (0,2)", (0, 2), Alone(2, 0, 20, 10, true));
+    Pair("Test7e one HQ fewer than crafts, ceiling -> (1,1)", (1, 1), Alone(2, 10, 9, 10, true));
+    Pair("Test7f last HQ unit, two crafts left -> (1,1)", (1, 1), Alone(2, 10, 1, 2, true));
+    Pair("Test7g more HQ held than planned -> (0,3)", (0, 3), Alone(3, 10, 50, 5, true));
+    Pair("Test7h 0 crafts left behaves as 1 (1 HQ)", Alone(2, 10, 1, 1, true), Alone(2, 10, 1, 0, true));
+    Pair("Test7i 0 crafts left behaves as 1 (10 HQ)", Alone(2, 10, 10, 1, true), Alone(2, 10, 10, 0, true));
+    Pair("Test7j row not taking HQ uses NQ -> (2,0)", (2, 0), Alone(2, 10, 10, 10, false));
+    Pair("Test7k row not taking HQ, NQ short -> (1,1)", (1, 1), Alone(2, 1, 10, 10, false));
+
+    Assert("Test8 CraftsLeft fewer entries than net -> 6", 6, CraftsLeft(10, 1, 6));
+    Assert("Test8b CraftsLeft yields 2 -> 2", 2, CraftsLeft(3, 2, 6));
+    Assert("Test8c CraftsLeft nothing needed -> 0", 0, CraftsLeft(0, 1, 4));
+
+    Check("Test9 target -> takes HQ", true, TakesHq(false, 6, 0));
+    Check("Test9b intermediate whose units all feed the list -> NQ first", false, TakesHq(false, 4, 4));
+    Check("Test9c quick synth row -> NQ first", false, TakesHq(true, 6, 0));
+
+    // Runs the rows in list order, one craft at a time, recomputing every target row's crafts left
+    // and taking each craft's units out of the bags. Returns each craft's (nq, hq) in run order.
+    List<(string Row, int Nq, int Hq)> Simulate(
+        (string Name, int Crafts, int Amount, bool TakesHq)[] rows, int nqHeld, int hqHeld)
+    {
+        var left = rows.Select(r => r.Crafts).ToArray();
+        var crafts = new List<(string, int, int)>();
+        for (var i = 0; i < rows.Length; i++)
+        {
+            while (left[i] > 0)
+            {
+                var sharing = rows.Select((r, k) => (r, k)).Where(x => x.r.TakesHq)
+                    .Select(x => (left[x.k], x.r.Amount)).ToList();
+                var h = PerCraftHq(hqHeld, sharing);
+                var (nq, hq) = Split(rows[i].Amount, nqHeld, hqHeld, h, rows[i].TakesHq);
+                nqHeld -= nq;
+                hqHeld -= hq;
+                left[i]--;
+                crafts.Add((rows[i].Name, nq, hq));
+            }
+        }
+        return crafts;
+    }
+    string Show(IEnumerable<(string Row, int Nq, int Hq)> crafts) => string.Join(" ", crafts.Select(c => $"{c.Row}({c.Nq},{c.Hq})"));
+    void Crafts(string label, string expected, List<(string Row, int Nq, int Hq)> actual)
+    {
+        var got = Show(actual);
+        if (expected == got) { Console.WriteLine($"[PASS] {label}: {got}"); passed++; }
+        else { Console.WriteLine($"[FAIL] {label}: expected={expected}, actual={got}"); failed++; }
+    }
+
+    // A then B, 3 crafts each, 2 of the item per craft, both planned at 2 HQ: B is not short.
+    Crafts("Test10 two targets, same amount, 12 HQ -> every craft (0,2)",
+        "A(0,2) A(0,2) A(0,2) B(0,2) B(0,2) B(0,2)",
+        Simulate(new[] { ("A", 3, 2, true), ("B", 3, 2, true) }, 20, 12));
+
+    // Different amounts: ffmarket plans A (3 per craft, 1 craft) and B (1 per craft, 10 crafts) at
+    // min(3, amount) = 3 and 1, so 13 HQ are held for 11 crafts. An even ceil(13/11) = 2 would short A.
+    Crafts("Test11 A 3x1 craft, B 1x10 crafts, 13 HQ -> A takes 3, every B 1",
+        "A(0,3)" + string.Concat(Enumerable.Repeat(" B(0,1)", 10)),
+        Simulate(new[] { ("A", 1, 3, true), ("B", 10, 1, true) }, 20, 13));
+    Crafts("Test11b same rows planned at 1 HQ per craft (11 HQ) -> A 1, every B 1",
+        "A(2,1)" + string.Concat(Enumerable.Repeat(" B(0,1)", 10)),
+        Simulate(new[] { ("A", 1, 3, true), ("B", 10, 1, true) }, 20, 11));
+    // One unit short of the 13: the deficit lands on the largest-amount row A, in either run order.
+    Crafts("Test11c 12 HQ, A first -> A takes 2, every B 1",
+        "A(1,2)" + string.Concat(Enumerable.Repeat(" B(0,1)", 10)),
+        Simulate(new[] { ("A", 1, 3, true), ("B", 10, 1, true) }, 20, 12));
+    Crafts("Test11d 12 HQ, B first -> every B 1, A takes 2",
+        string.Concat(Enumerable.Repeat("B(0,1) ", 10)) + "A(1,2)",
+        Simulate(new[] { ("B", 10, 1, true), ("A", 1, 3, true) }, 20, 12));
+
+    // An HQ target R that another row consumes, beside an HQ target Y nothing consumes, both planned
+    // at 1 of 2 HQ per craft (4 HQ). Neither takes the other's units.
+    Crafts("Test12 consumed HQ target R beside Y, 4 HQ -> every craft 1",
+        "R(1,1) R(1,1) Y(1,1) Y(1,1)",
+        Simulate(new[] { ("R", 2, 2, true), ("Y", 2, 2, true) }, 20, 4));
+    // A non-HQ target X that HQ target R crafts HQ is a non-NQOnly target row too, so ffmarket plans
+    // it at R's count: 1 of 2 per craft over X's 2 crafts and R's 3 is 5 HQ.
+    Crafts("Test12b non-HQ target X beside R, 5 HQ -> every craft 1",
+        "X(1,1) X(1,1) R(1,1) R(1,1) R(1,1)",
+        Simulate(new[] { ("X", 2, 2, true), ("R", 3, 2, true) }, 20, 5));
+    Crafts("Test12c same rows at the full amount (10 HQ) -> every craft 2",
+        "X(0,2) X(0,2) R(0,2) R(0,2) R(0,2)",
+        Simulate(new[] { ("X", 2, 2, true), ("R", 3, 2, true) }, 20, 10));
+
+    // One HQ unit fewer than crafts: only the last craft starts without one.
+    Crafts("Test13 one HQ fewer than crafts -> only the last craft (2,0)",
+        "A(1,1) A(1,1) A(1,1) A(2,0)",
+        Simulate(new[] { ("A", 4, 2, true) }, 20, 3));
+    // An intermediate row between targets takes NQ first and leaves the targets' HQ units.
+    Crafts("Test13b intermediate I uses NQ, target T keeps its HQ",
+        "I(2,0) I(2,0) T(1,1) T(1,1)",
+        Simulate(new[] { ("I", 2, 2, false), ("T", 2, 2, true) }, 20, 2));
 }
 
 WorkshopQuantityTests.Run(ref passed, ref failed);

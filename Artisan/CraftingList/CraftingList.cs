@@ -579,6 +579,10 @@ namespace Artisan.CraftingLists
             {
                 if (setIngredients == null || Endurance.IPCOverride)
                 {
+                    if (CraftingListUI.Processing && CraftingListUI.selectedList is { SkipIfEnough: true, SkipLiteral: true } && Materials != null
+                        && SetSpreadIngredients(CraftingListUI.selectedList, Materials))
+                        return true;
+
                     //TODO: this needs rewrite
                     for (uint i = 0; i <= 5; i++)
                     {
@@ -666,6 +670,80 @@ namespace Artisan.CraftingLists
             }
             else
             {
+                return false;
+            }
+
+            return true;
+        }
+
+        // Assigns each slot of the selected recipe per HqSpread: the HQ units in the bags are shared
+        // across the crafts of the target rows that consume the item. Returns false when a slot is left
+        // unfilled (SetSpecific cannot fill one that needs the ContextIconMenu pick) or the assignment
+        // throws, so the caller runs the click loop for this craft instead of stalling the list.
+        private static unsafe bool SetSpreadIngredients(NewCraftingList list, Dictionary<uint, int> materials)
+        {
+            var entry = Operations.GetSelectedRecipeEntry();
+            if (entry == null || LuminaSheets.RecipeSheet == null || !LuminaSheets.RecipeSheet.TryGetValue(entry->RecipeId, out var recipe))
+                return false;
+
+            try
+            {
+                int OneTierDemand(Recipe r) => materials.TryGetValue(r.ItemResult.RowId, out var d) ? d : 0;
+
+                bool RowTakesHq(Recipe r)
+                {
+                    var nqOnly = list.Recipes.FirstOrDefault(x => x.ID == r.RowId)?.ListItemOptions?.NQOnly ?? false;
+                    return HqSpread.TakesHq(nqOnly, list.ExpandedList.Count(x => x == r.RowId) * r.AmountResult, OneTierDemand(r));
+                }
+
+                int RowCraftsLeft(Recipe r) => HqSpread.CraftsLeft(
+                    ResumeFix.CorrectedRemainingRuntime(list, r, materials),
+                    r.AmountResult,
+                    list.ExpandedList.Skip(CurrentIndex).Count(x => x == r.RowId));
+
+                var hqRows = list.Recipes.Select(x => x.ID).Distinct()
+                    .Where(id => LuminaSheets.RecipeSheet.ContainsKey(id))
+                    .Select(id => LuminaSheets.RecipeSheet[id])
+                    .Where(RowTakesHq)
+                    .ToList();
+                var craftsLeft = new Dictionary<uint, int>();
+                var takesHq = RowTakesHq(recipe);
+
+                foreach (ref var ing in entry->IngredientsSpan)
+                {
+                    if (ing.ItemId == 0 || ing.NumTotal == 0)
+                        continue;
+
+                    var itemId = ing.ItemId;
+                    var sharing = new List<(int Crafts, int Amount)>();
+                    foreach (var r in hqRows)
+                    {
+                        var amount = r.Ingredients().Where(x => x.Item.RowId == itemId).Sum(x => x.Amount);
+                        if (amount <= 0)
+                            continue;
+                        if (!craftsLeft.TryGetValue(r.RowId, out var left))
+                            craftsLeft[r.RowId] = left = RowCraftsLeft(r);
+                        sharing.Add((left, amount));
+                    }
+
+                    var perCraftHq = HqSpread.PerCraftHq(ing.NumAvailableHQ, sharing);
+                    var (nq, hq) = HqSpread.Split(ing.NumTotal, ing.NumAvailableNQ, ing.NumAvailableHQ, perCraftHq, takesHq);
+                    ing.SetSpecific(nq, hq, false);
+                    Svc.Log.Debug($"[HqSpread] {itemId.NameOfItem()}: nq={nq} hq={hq} perCraftHq={perCraftHq} hqCraftsLeft={sharing.Sum(x => x.Crafts)} takesHq={takesHq}");
+                }
+
+                foreach (ref var ing in entry->IngredientsSpan)
+                {
+                    if (ing.ItemId != 0 && ing.NumAssignedNQ + ing.NumAssignedHQ != ing.NumTotal)
+                    {
+                        Svc.Log.Debug($"[HqSpread] {ing.ItemId.NameOfItem()} left at {ing.NumAssignedNQ}+{ing.NumAssignedHQ} of {ing.NumTotal}; using the click loop");
+                        return false;
+                    }
+                }
+            }
+            catch (Exception e)
+            {
+                e.Log();
                 return false;
             }
 
