@@ -103,7 +103,8 @@ static bool UseProgressOnly(bool listRunning, bool nqOnly, bool quickSynth, bool
 }
 
 // ---- copied verbatim from HqSpread.cs -----------------------------------------
-static bool TakesHq(bool nqOnly, int literalTarget, int oneTierDemand) => !nqOnly && literalTarget > oneTierDemand;
+static bool TakesHq(bool nqOnly, int literalTarget, int oneTierDemand, int amountResult)
+    => !nqOnly && literalTarget - oneTierDemand >= Math.Max(1, amountResult);
 
 static int CraftsLeft(int net, int amountResult, int remainingEntries)
     => Math.Max(0, Math.Min((int)Math.Ceiling(net / (double)Math.Max(1, amountResult)), remainingEntries));
@@ -312,9 +313,12 @@ var triConsumers = new Dictionary<uint, List<(uint, int)>>
     Assert("Test8b CraftsLeft yields 2 -> 2", 2, CraftsLeft(3, 2, 6));
     Assert("Test8c CraftsLeft nothing needed -> 0", 0, CraftsLeft(0, 1, 4));
 
-    Check("Test9 target -> takes HQ", true, TakesHq(false, 6, 0));
-    Check("Test9b intermediate whose units all feed the list -> NQ first", false, TakesHq(false, 4, 4));
-    Check("Test9c quick synth row -> NQ first", false, TakesHq(true, 6, 0));
+    Check("Test9 target -> takes HQ", true, TakesHq(false, 6, 0, 1));
+    Check("Test9b intermediate whose units all feed the list -> NQ first", false, TakesHq(false, 4, 4, 1));
+    Check("Test9c quick synth row -> NQ first", false, TakesHq(true, 6, 0, 1));
+    Check("Test9d yields-3 intermediate, 2 crafts for 4 units of demand -> NQ first", false, TakesHq(false, 6, 4, 3));
+    Check("Test9e yields-3 target also consumed on-list (1 craft beyond 2 units of demand) -> takes HQ", true, TakesHq(false, 6, 2, 3));
+    Check("Test9f yields-3 target with no on-list consumer -> takes HQ", true, TakesHq(false, 3, 0, 3));
 
     // Runs the rows in list order, one craft at a time, recomputing every target row's crafts left
     // and taking each craft's units out of the bags. Returns each craft's (nq, hq) in run order.

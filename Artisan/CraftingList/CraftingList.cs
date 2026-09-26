@@ -693,7 +693,7 @@ namespace Artisan.CraftingLists
                 bool RowTakesHq(Recipe r)
                 {
                     var nqOnly = list.Recipes.FirstOrDefault(x => x.ID == r.RowId)?.ListItemOptions?.NQOnly ?? false;
-                    return HqSpread.TakesHq(nqOnly, list.ExpandedList.Count(x => x == r.RowId) * r.AmountResult, OneTierDemand(r));
+                    return HqSpread.TakesHq(nqOnly, list.ExpandedList.Count(x => x == r.RowId) * r.AmountResult, OneTierDemand(r), r.AmountResult);
                 }
 
                 int RowCraftsLeft(Recipe r) => HqSpread.CraftsLeft(

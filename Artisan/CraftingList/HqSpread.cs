@@ -26,8 +26,13 @@ namespace Artisan.CraftingLists;
 // Pure (no Lumina/Dalamud types) so ResumeFix.Tests can run a verbatim copy.
 internal static class HqSpread
 {
-    // A target: listed units beyond on-list demand (ResumeFix's directSubmit > 0), not quick synth.
-    internal static bool TakesHq(bool nqOnly, int literalTarget, int oneTierDemand) => !nqOnly && literalTarget > oneTierDemand;
+    // A target: at least one craft's units listed beyond on-list demand, not quick synth. A crafted
+    // intermediate's last craft can leave up to amountResult - 1 units over what the list consumes,
+    // so "any units beyond demand" would count a yields > 1 intermediate as a target. ffmarket lists
+    // every target in whole crafts and never nets owned stock, so a target's surplus is at least
+    // one craft's units.
+    internal static bool TakesHq(bool nqOnly, int literalTarget, int oneTierDemand, int amountResult)
+        => !nqOnly && literalTarget - oneTierDemand >= Math.Max(1, amountResult);
 
     // The two limits ProcessList stops a row at: net units still needed, and its list entries left.
     internal static int CraftsLeft(int net, int amountResult, int remainingEntries)
