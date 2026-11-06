@@ -351,7 +351,7 @@ namespace Artisan.CraftingLists
             if (selectedList.SkipIfEnough && (preparing || !isCrafting))
             {
                 var ItemId = recipe.ItemResult.RowId;
-                int numMats = selectedList.SkipIfEnough && selectedList.SkipLiteral ? ResumeFix.CorrectedRemainingRuntime(selectedList, recipe, Materials) : (Materials.Any(x => x.Key == recipe.ItemResult.RowId) && !selectedList.SkipLiteral ? Materials.First(x => x.Key == recipe.ItemResult.RowId).Value : selectedList.ExpandedList.Count(x => LuminaSheets.RecipeSheet[x].ItemResult.RowId == ItemId) * recipe.AmountResult);
+                int numMats = selectedList.SkipIfEnough && selectedList.SkipLiteral ? ResumeFix.CorrectedRemainingRuntime(selectedList, recipe, Materials) : (!selectedList.SkipLiteral && Materials.TryGetValue(recipe.ItemResult.RowId, out var listMats) ? listMats : selectedList.ExpandedList.Count(x => LuminaSheets.RecipeSheet[x].ItemResult.RowId == ItemId) * recipe.AmountResult);
                 if ((selectedList.SkipIfEnough && selectedList.SkipLiteral) ? numMats <= 0 : numMats <= CraftingListUI.NumberOfIngredient(recipe.ItemResult.RowId))
                 {
                     DuoLog.Information($"Skipping {recipe.ItemResult.Value.Name.ToDalamudString()} due to having enough in inventory [Skip Items you already have enough of]");
@@ -527,12 +527,25 @@ namespace Artisan.CraftingLists
                 var expectedNumber = 0;
                 var stillToCraft = 0;
                 var difference = 0;
-                var totalToCraft = selectedList.ExpandedList.Count(x => LuminaSheets.RecipeSheet[x].ItemResult.Value.Name.ToDalamudString().ToString() == recipe.ItemResult.Value.Name.ToDalamudString().ToString()) * recipe.AmountResult;
-                if (Materials!.Count(x => x.Key == recipe.ItemResult.RowId) == 0 || selectedList.SkipLiteral)
+
+                // Count each distinct recipe once and remember where it first appears, instead of rescanning ExpandedList per entry.
+                var recipeCounts = new Dictionary<uint, int>();
+                var firstIndex = new Dictionary<uint, int>();
+                for (int i = 0; i < selectedList.ExpandedList.Count; i++)
+                {
+                    var id = selectedList.ExpandedList[i];
+                    recipeCounts[id] = recipeCounts.GetValueOrDefault(id) + 1;
+                    firstIndex.TryAdd(id, i);
+                }
+
+                var resultName = recipe.ItemResult.Value.Name.ToDalamudString().ToString();
+                var totalToCraft = recipeCounts.Where(x => LuminaSheets.RecipeSheet[x.Key].ItemResult.Value.Name.ToDalamudString().ToString() == resultName).Sum(x => x.Value) * recipe.AmountResult;
+                var currentCount = recipeCounts.GetValueOrDefault(CraftingListUI.CurrentProcessedItem);
+                if (!Materials!.ContainsKey(recipe.ItemResult.RowId) || selectedList.SkipLiteral)
                 {
                     // var previousCrafted = selectedList.Items.Count(x => LuminaSheets.RecipeSheet[x].ItemResult.Value.Name.ToDalamudString().ToString() == recipe.ItemResult.Value.Name.ToDalamudString().ToString() && selectedList.Items.IndexOf(x) < CurrentIndex) * recipe.AmountResult;
-                    stillToCraft = selectedList.ExpandedList.Count(x => LuminaSheets.RecipeSheet[x].ItemResult.RowId == recipe.ItemResult.RowId && selectedList.ExpandedList.IndexOf(x) >= CurrentIndex) * recipe.AmountResult - inventoryitems;
-                    expectedNumber = stillToCraft > 0 ? Math.Min(selectedList.ExpandedList.Count(x => x == CraftingListUI.CurrentProcessedItem) * recipe.AmountResult, stillToCraft) : selectedList.ExpandedList.Count(x => x == CraftingListUI.CurrentProcessedItem);
+                    stillToCraft = recipeCounts.Where(x => LuminaSheets.RecipeSheet[x.Key].ItemResult.RowId == recipe.ItemResult.RowId && firstIndex[x.Key] >= CurrentIndex).Sum(x => x.Value) * recipe.AmountResult - inventoryitems;
+                    expectedNumber = stillToCraft > 0 ? Math.Min(currentCount * recipe.AmountResult, stillToCraft) : currentCount;
                     difference = Math.Min(totalToCraft - inventoryitems, expectedNumber);
                 }
                 else
@@ -541,7 +554,7 @@ namespace Artisan.CraftingLists
                     // SkipIfEnough check in ProcessList uses. The listed quantity may already be net of owned
                     // stock (a plan built from what is missing), so subtracting inventory from it counts that
                     // stock twice and yields 0 while the skip check still says more is needed.
-                    expectedNumber = Materials!.First(x => x.Key == recipe.ItemResult.RowId).Value;
+                    expectedNumber = Materials![recipe.ItemResult.RowId];
                     difference = Math.Min(expectedNumber - inventoryitems, totalToCraft);
                 }
 
