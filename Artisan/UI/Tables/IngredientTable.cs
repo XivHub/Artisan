@@ -1,6 +1,7 @@
 ﻿using Artisan.CraftingLists;
 using Artisan.IPC;
 using Artisan.RawInformation;
+using Dalamud.Bindings.ImGui;
 using Dalamud.Interface.Colors;
 using ECommons;
 using ECommons.Automation;
@@ -9,7 +10,6 @@ using ECommons.ImGuiMethods;
 using ECommons.Reflection;
 using FFXIVClientStructs.FFXIV.Client.Game;
 using FFXIVClientStructs.FFXIV.Client.UI.Misc;
-using Dalamud.Bindings.ImGui;
 using Lumina.Excel.Sheets;
 using OtterGui;
 using OtterGui.Raii;
@@ -38,7 +38,7 @@ namespace Artisan.UI.Tables
         private static float _gatherItemLocationColumWidth = 0;
         private static float _cheapestColumnWidth = 100;
         private static float _numberForSaleWidth = 100;
-        
+
         private static float FixedWidth(float baseWidth, string label)
         {
             if (baseWidth <= 0)
@@ -63,6 +63,9 @@ namespace Artisan.UI.Tables
         public readonly CheapestServerColumn _cheapestServerColumn = new() { Label = "Optimal World For Buying" };
         public readonly NumberForSaleColumn _numberForSaleColumn = new() { Label = "Quantity For Sale (All Worlds)" };
 
+        private static bool GatherBuddy =>
+            DalamudReflector.TryGetDalamudPlugin("GatherBuddy", out var _, false, true);
+
         private static bool ItemVendor =>
             DalamudReflector.TryGetDalamudPlugin("ItemVendorLocation", out var _, false, true);
 
@@ -83,7 +86,7 @@ namespace Artisan.UI.Tables
         private bool? isOnList = null;
 
         public IngredientTable(List<Ingredient> ingredientList)
-            : base("IngredientTableV2", ingredientList) 
+            : base("IngredientTableV2", ingredientList)
         {
             if (P.Config.DefaultHideInventoryColumn) _inventoryColumn.Flags |= ImGuiTableColumnFlags.DefaultHide;
             if (P.Config.DefaultHideRetainerColumn) _retainerColumn.Flags |= ImGuiTableColumnFlags.DefaultHide;
@@ -116,7 +119,7 @@ namespace Artisan.UI.Tables
                 item.OnRemainingChange += SetFilterDirty;
             }
         }
-        
+
         private bool subcraftCountsDirty = false;
 
         private void SetFilterDirty(object? sender, bool e)
@@ -191,7 +194,7 @@ namespace Artisan.UI.Tables
                 }
 
                 if (item.Icon is not null)
-                ImGuiUtil.HoverIcon(item.Icon, Interface.LineIconSize);
+                    ImGuiUtil.HoverIcon(item.Icon, Interface.LineIconSize);
                 ImGui.SameLine();
 
                 var selected = ImGui.Selectable($"{item.Data.Name.ToString()}");
@@ -449,10 +452,7 @@ namespace Artisan.UI.Tables
                     if (ImGui.Button($"Fetch Prices"))
                     {
                         P.UniversalsisClient.PlayerWorld = Svc.Objects.LocalPlayer?.CurrentWorld.RowId;
-                        if (P.Config.LimitUnversalisToDC)
-                            Task.Run(() => P.UniversalsisClient.GetDCData(item.Data.RowId, ref item.MarketboardData));
-                        else
-                            Task.Run(() => P.UniversalsisClient.GetRegionData(item.Data.RowId, ref item.MarketboardData));
+                        Task.Run(() => P.UniversalsisClient.GetRegionData(item.Data.RowId, ref item.MarketboardData));
                     }
                 }
             }
@@ -725,6 +725,7 @@ namespace Artisan.UI.Tables
                 return;
 
             DrawGatherChill(item);
+            DrawGatherItem(item);
             DrawFeesh(item);
             DrawSearchItem(item);
             DrawItemVendorLookup(item);
@@ -951,6 +952,34 @@ namespace Artisan.UI.Tables
             catch (Exception e)
             {
                 e.Log();
+            }
+        }
+
+        private static void DrawGatherItem(Ingredient item)
+        {
+            if (item.Data.RowId == 0 || !(item.Sources.Contains(2) || item.Sources.Contains(3)))
+                return;
+
+            if (GatherBuddy)
+            {
+                if (!ImGui.Selectable("Gather with Gatherbuddy"))
+                    return;
+
+                try
+                {
+                    if (LuminaSheets.GatheringItemSheet!.Any(x => x.Value.Item.RowId == item.Data.RowId))
+                        Chat.SendMessage($"/gather {item.Data.Name.ToString()}");
+                    else
+                        Chat.SendMessage($"/gatherfish {item.Data.Name.ToString()}");
+                }
+                catch (Exception e)
+                {
+                    e.Log();
+                }
+            }
+            else
+            {
+                ImGui.TextDisabled("Gather with Gatherbuddy (Please install Gatherbuddy)");
             }
         }
 
