@@ -2,7 +2,7 @@
   "Author": "Taurenkey (Puni.sh)",
   "Name": "Artisan (XivHub fork)",
   "Punchline": "Crafting automation. This fork adds saved FC Workshop presets and fixes under-crafted intermediates.",
-  "Description": "The all-in-one crafting plugin.",
+  "Description": "Crafting lists, macros and automation. This XivHub fork improves FC Workshop crafting: you can add parts or phases to the open list and save workshop presets. It also fixes intermediates being under-crafted, the craft order, and progress and ETA when steps are skipped.",
   "InternalName": "Artisan",
   "ApplicableVersion": "any",
   "IconUrl": "https://s3.puni.sh/media/plugin/6/icon-3h8wd5b9qr.png",
