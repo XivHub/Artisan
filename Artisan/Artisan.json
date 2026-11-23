@@ -9,7 +9,7 @@
   "Tags": [
     "crafting"
   ],
-  "RepoUrl": "https://github.com/XivHub",
+  "RepoUrl": "https://github.com/XivHub/Artisan",
   "DalamudApiLevel": 15,
   "DownloadLinkTesting": "https://edgl.dev/share/zhyra/artisan/latest.zip",
   "ChangeLog": "- Added the Artisan.CreateList IPC: other plugins can create a crafting list from item ids and quantities.\n- Added the Artisan.CreateListWithSubcrafts IPC: like Artisan.CreateList, and also adds every intermediate craft.\n- Fixed IPC teardown unregistering several providers with the wrong types.\n- Fixed quick synth crafting 0 of an intermediate under \"Skip items you already have enough of\" when the list quantity already excludes owned stock, which then failed every craft that uses it.\n- Added the Artisan.ImportList IPC: other plugins can import a crafting list from Artisan export JSON, keeping its skip settings and each item's Quick Synthesis choice.\n- List rows set to quick synthesis that cannot be quick-synthesized craft with progress only, so they come out NQ, without waiting for a Raphael solution first.\n- Synced with upstream: premade lists can be copied into your own lists, and exporting a premade list works.\n- Lists that skip up to the list amount share HQ ingredients across the crafts of the rows they are for, instead of using them all on the first ones; other rows use NQ ingredients first.\n- Synced with upstream: Gather & Chill integration in lists, faster list ingredient tables."
