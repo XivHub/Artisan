@@ -1,7 +1,7 @@
 {
   "Author": "Taurenkey (Puni.sh)",
   "Name": "Artisan (XivHub fork)",
-  "Punchline": "A 'simple' crafting plugin.",
+  "Punchline": "Crafting automation. This fork adds saved FC Workshop presets and fixes under-crafted intermediates.",
   "Description": "The all-in-one crafting plugin.",
   "InternalName": "Artisan",
   "ApplicableVersion": "any",
